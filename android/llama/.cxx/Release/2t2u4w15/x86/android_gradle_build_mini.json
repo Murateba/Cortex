@@ -1,0 +1,62 @@
+{
+  "buildFiles": [
+    "/home/baba/Documents/cortex/android/llama/src/main/cpp/CMakeLists.txt",
+    "/home/baba/Documents/llama.cpp/CMakeLists.txt",
+    "/home/baba/Documents/llama.cpp/common/CMakeLists.txt",
+    "/home/baba/Documents/llama.cpp/ggml/CMakeLists.txt",
+    "/home/baba/Documents/llama.cpp/ggml/src/CMakeLists.txt",
+    "/home/baba/Documents/llama.cpp/src/CMakeLists.txt"
+  ],
+  "cleanCommandsComponents": [
+    [
+      "/home/baba/Android/Sdk/cmake/3.22.1/bin/ninja",
+      "-C",
+      "/home/baba/Documents/cortex/android/llama/.cxx/Release/2t2u4w15/x86",
+      "clean"
+    ]
+  ],
+  "buildTargetsCommandComponents": [
+    "/home/baba/Android/Sdk/cmake/3.22.1/bin/ninja",
+    "-C",
+    "/home/baba/Documents/cortex/android/llama/.cxx/Release/2t2u4w15/x86",
+    "{LIST_OF_TARGETS_TO_BUILD}"
+  ],
+  "libraries": {
+    "common::@9f41f6696c114fc64054": {
+      "artifactName": "common",
+      "abi": "x86",
+      "output": "/home/baba/Documents/cortex/android/llama/.cxx/Release/2t2u4w15/x86/llama_build/common/libcommon.a",
+      "runtimeFiles": []
+    },
+    "build_info::@9f41f6696c114fc64054": {
+      "artifactName": "build_info",
+      "abi": "x86",
+      "runtimeFiles": []
+    },
+    "ai::@6890427a1f51a3e7e1df": {
+      "artifactName": "ai",
+      "abi": "x86",
+      "output": "/home/baba/Documents/cortex/build/llama/intermediates/cxx/Release/2t2u4w15/obj/x86/libai.so",
+      "runtimeFiles": [
+        "/home/baba/Documents/cortex/build/llama/intermediates/cxx/Release/2t2u4w15/obj/x86/libllama.so",
+        "/home/baba/Documents/cortex/build/llama/intermediates/cxx/Release/2t2u4w15/obj/x86/libggml.so"
+      ]
+    },
+    "ggml::@ac82e33bde8b2dde67df": {
+      "artifactName": "ggml",
+      "abi": "x86",
+      "output": "/home/baba/Documents/cortex/build/llama/intermediates/cxx/Release/2t2u4w15/obj/x86/libggml.so",
+      "runtimeFiles": [
+        "/home/baba/Android/Sdk/ndk/25.1.8937393/toolchains/llvm/prebuilt/linux-x86_64/lib64/clang/14.0.6/lib/linux/i386/libomp.so"
+      ]
+    },
+    "llama::@a28f7d715364b5d9b6c0": {
+      "artifactName": "llama",
+      "abi": "x86",
+      "output": "/home/baba/Documents/cortex/build/llama/intermediates/cxx/Release/2t2u4w15/obj/x86/libllama.so",
+      "runtimeFiles": [
+        "/home/baba/Documents/cortex/build/llama/intermediates/cxx/Release/2t2u4w15/obj/x86/libggml.so"
+      ]
+    }
+  }
+}

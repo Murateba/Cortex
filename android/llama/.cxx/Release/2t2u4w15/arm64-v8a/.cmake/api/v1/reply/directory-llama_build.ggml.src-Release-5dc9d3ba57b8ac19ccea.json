@@ -1,0 +1,14 @@
+{
+	"backtraceGraph" : 
+	{
+		"commands" : [],
+		"files" : [],
+		"nodes" : []
+	},
+	"installers" : [],
+	"paths" : 
+	{
+		"build" : "llama_build/ggml/src",
+		"source" : "/home/baba/Documents/llama.cpp/ggml/src"
+	}
+}

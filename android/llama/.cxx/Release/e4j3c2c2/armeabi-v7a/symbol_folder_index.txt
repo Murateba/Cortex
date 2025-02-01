@@ -1,0 +1,1 @@
+C:\Users\Dell\AndroidStudioProjects\cortex\build\llama\intermediates\cxx\Release\e4j3c2c2\obj\armeabi-v7a

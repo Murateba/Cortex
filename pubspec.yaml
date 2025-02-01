@@ -1,0 +1,127 @@
+name: cortex
+description: "Vertex of Artificial Intelligence"
+
+publish_to: 'none'
+
+version: 0.8.5+51
+
+environment:
+  sdk: '>=3.4.3 <4.0.0'
+
+dependencies:
+  flutter_downloader: ^1.11.8
+  permission_handler: ^11.3.1
+  path_provider: ^2.0.11
+  shared_preferences: ^2.3.2
+  uuid: ^4.5.1
+  flutter_localizations:
+    sdk: flutter
+  intl: ^0.19.0-nullsafety.2
+  provider: ^6.1.2
+  flutter:
+    sdk: flutter
+  google_fonts: ^6.2.1
+  url_launcher: ^6.3.1
+  flutter_dotenv: ^5.2.1
+  google_generative_ai: ^0.4.6
+  firebase_core: ^3.7.0
+  firebase_auth: ^5.3.2
+  flutter_markdown: ^0.7.4+1
+  font_awesome_flutter: ^10.8.0
+  file_picker: ^8.1.4
+  cloud_firestore: ^5.4.5
+  image_picker: ^1.1.2
+  flutter_highlight: ^0.7.0
+  visibility_detector: ^0.4.0+2
+  safe_text: ^1.0.7
+  in_app_purchase: ^3.2.0
+  device_info_plus: 11.2.0
+  email_validator: ^3.0.0
+  shimmer: ^3.0.0
+  dio: ^5.7.0
+  speech_to_text: ^7.0.0
+  firebase_analytics: ^11.3.6
+  flutter_math_fork: ^0.7.2
+  flutter_svg: ^2.0.15
+  collection: ^1.18.0
+  http: any
+  path: any
+  fl_chart: ^0.70.2
+  internet_connection_checker_plus: any
+  mime: any
+  highlight: any
+  share_plus: ^10.1.4
+  gallery_saver_plus: ^3.2.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_launcher_icons: ^0.14.2
+  cloud_functions: ^5.2.0
+
+flutter_icons:
+  android: true
+  ios: false
+  adaptive_icon_background: "#090909"
+  adaptive_icon_foreground: "assets/cortex.png"
+  image_path: "assets/cortex.png"
+
+flutter:
+  uses-material-design: true
+  generate: true
+  assets:
+    - assets/gemma.png
+    - assets/mistral.png
+    - assets/gptneox.jpg
+    - assets/tinyllama.png
+    - assets/phi.png
+    - assets/gemini.png
+    - assets/llama.png
+    - assets/customai.png
+    - assets/hermes.jpg
+    - assets/chat.svg
+    - assets/sound.svg
+    - assets/deleteConversation.svg
+    - assets/editConversationTitle.svg
+    - assets/starConversation.svg
+    - assets/copy.svg
+    - assets/main.svg
+    - assets/models.svg
+    - assets/inbox.svg
+    - assets/teacher.png
+    - assets/doctor.png
+    - assets/animegirl.jpg
+    - assets/shaver.png
+    - assets/psychologist.png
+    - assets/mrbeast.jpg
+    - assets/chatgpt.jpg
+    - assets/claude.jpg
+    - assets/nova.jpg
+    - assets/qwen.png
+    - assets/sparkle.svg
+    - assets/pluslogo.png
+    - assets/prologo.png
+    - assets/ultralogo.png
+    - assets/whiteplus.png
+    - assets/whitepro.png
+    - assets/whiteultra.png
+    - assets/photo.svg
+    - assets/music.svg
+    - assets/pdf.svg
+    - assets/star.svg
+    - assets/storage.svg
+    - assets/parameter.svg
+    - assets/context.svg
+    - assets/report.svg
+    - assets/verification.png
+    - assets/regenerate.svg
+    - assets/credit.svg
+    - assets/expand.svg
+    - assets/shrink.svg
+    - assets/download.svg
+    - assets/share.svg
+    - assets/memory.svg
+    - assets/select.svg
+    - assets/language.svg
+    - assets/theme.svg
+    - .env

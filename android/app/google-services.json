@@ -1,0 +1,69 @@
+{
+  "project_info": {
+    "project_number": "561391430514",
+    "firebase_url": "https://vertex-ai-1618-default-rtdb.europe-west1.firebasedatabase.app",
+    "project_id": "vertex-ai-1618",
+    "storage_bucket": "vertex-ai-1618.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:561391430514:android:73c19e3d04e90627b10beb",
+        "android_client_info": {
+          "package_name": "com.vertex.ai"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "561391430514-nqjp6jl1s9oqi8ddg2fhm83lbvg94qca.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBxFqlCtfsSY7lIN5oZiPlge7bfkuD21zE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "561391430514-nqjp6jl1s9oqi8ddg2fhm83lbvg94qca.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:561391430514:android:0de290ae306149efb10beb",
+        "android_client_info": {
+          "package_name": "com.vertex.cortex"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "561391430514-nqjp6jl1s9oqi8ddg2fhm83lbvg94qca.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBxFqlCtfsSY7lIN5oZiPlge7bfkuD21zE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "561391430514-nqjp6jl1s9oqi8ddg2fhm83lbvg94qca.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
