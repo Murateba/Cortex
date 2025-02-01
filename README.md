@@ -25,7 +25,7 @@ Cortex is a revolutionary mobile application that brings cutting-edge AI technol
 Cortex is designed to redefine how you interact with artificial intelligence. It allows you to chat with engaging AI characters, use advanced AI models powered by leading technologies, and even upload your own custom AI models (in GGUF format) for a truly personalized experience.
 
 > **Important Note:**  
-> Cortex is currently in its **Pre-Alpha** phase. As we strive to keep pace with the rapidly evolving AI landscape, Cortex has been released early. Consequently, some features—particularly the offline chat function—may experience performance issues. We are continuously refining the app based on your feedback.
+> Cortex is currently in its **Alpha** phase. As we strive to keep pace with the rapidly evolving AI landscape, Cortex has been released early. Consequently, some features—particularly the offline chat function—may experience performance issues. We are continuously refining the app based on your feedback.
 
 ---
 
