@@ -1,4 +1,5 @@
-// menu.dart
+// conversations.dart
+
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -89,11 +90,6 @@ class ConversationManager extends ChangeNotifier {
   }
 }
 
-class ConversationData {
-  /// Bu eski veri sınıfı. Artık ConversationManager içinde veriyi tutuyoruz.
-  /// İsterseniz tamamen kaldırabilirsiniz de. Sadece "depo" amacıyla dursun.
-}
-
 /// MenuScreen: Sohbet listesini gösteren ana ekran.
 class MenuScreen extends StatefulWidget {
   const MenuScreen({Key? key}) : super(key: key);
@@ -130,7 +126,7 @@ class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMi
 
     // Initialize AnimationController and other variables
     _fadeAnimationController = AnimationController(
-      duration: const Duration(milliseconds: 200),
+      duration: const Duration(milliseconds: 50),
       vsync: this,
     );
     _fadeAnimation = CurvedAnimation(
@@ -301,20 +297,6 @@ class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMi
     _conversationManagers.clear();
     _conversationIDsOrder.clear();
     await _loadConversations();
-  }
-
-  Future<void> _triggerFadeOutLoadingAnimation() async {
-    await Future.delayed(const Duration(milliseconds: 200));
-    if (mounted) {
-      setState(() {
-      });
-    }
-    await Future.delayed(const Duration(milliseconds: 200));
-    if (mounted) {
-      setState(() {
-        _isLoading = false;
-      });
-    }
   }
 
   Future<void> _deleteConversation(String conversationID) async {
@@ -495,9 +477,6 @@ class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMi
     manager.setStarred(newVal);
     await prefs.setBool('is_starred_$conversationID', newVal);
 
-    // Eğer sohbetin yıldızı kaldırılıyorsa ve yıldızlı sekmede listeleniyorsa,
-    // orada da animasyonla kaldırmak isterseniz, yine benzer removeItem süreci gerekir.
-    // Şimdilik "Starred Chats" sekmesi normal ListView olduğu için basitçe setState yetiyor.
     if (!newVal) {
       await Future.delayed(const Duration(milliseconds: 200));
     }
@@ -538,6 +517,7 @@ class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMi
     );
   }
 
+  /// 1. Güncellenmiş _buildConversationList fonksiyonu:
   Widget _buildConversationList({required bool showStarredOnly}) {
     final isDarkTheme = Provider.of<ThemeProvider>(context).isDarkTheme;
     final localizations = AppLocalizations.of(context)!;
@@ -607,15 +587,13 @@ class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMi
                     ScaffoldMessenger.of(context).hideCurrentSnackBar();
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor:
-                    isDarkTheme ? Colors.white : Colors.black,
+                    backgroundColor: isDarkTheme ? Colors.white : Colors.black,
                     padding: EdgeInsets.symmetric(
                       horizontal: screenWidth * 0.08,
                       vertical: screenHeight * 0.015,
                     ),
                     shape: RoundedRectangleBorder(
-                      borderRadius:
-                      BorderRadius.circular(screenWidth * 0.02),
+                      borderRadius: BorderRadius.circular(screenWidth * 0.02),
                     ),
                   ),
                   child: Text(
@@ -647,8 +625,7 @@ class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMi
       );
     } else {
       return AnimatedList(
-        key: _allChatsListKey, // Use the same key as used in _deleteConversation.
-        controller: _listScrollController,
+        key: _allChatsListKey,
         initialItemCount: filteredIDs.length,
         itemBuilder: (context, index, animation) {
           final convID = filteredIDs[index];
@@ -795,6 +772,8 @@ class _ConversationTileState extends State<ConversationTile>
   bool _isLongPress = false;
 
   static _ConversationTileState? _currentlyOpenTileState;
+
+  bool _isDialogOpen = false;
 
   @override
   void initState() {
@@ -991,77 +970,137 @@ class _ConversationTileState extends State<ConversationTile>
   }
 
   void _showEditDialog(bool isDarkTheme, AppLocalizations loc) {
+    if (_isDialogOpen) return; // Eğer diyalog zaten açıksa, yeni diyalog açılmasın
+    _isDialogOpen = true;
+
     final TextEditingController controller = TextEditingController(
       text: widget.manager.conversationTitle,
     );
-
     final screenWidth = MediaQuery.of(context).size.width;
 
-    showDialog(
+    showGeneralDialog(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(screenWidth * 0.03),
-          ),
-          backgroundColor: isDarkTheme ? const Color(0xFF2D2F2E) : Colors.grey[200],
-          title: Text(
-            loc.editConversationTitle,
-            style: TextStyle(
-              color: isDarkTheme ? Colors.white : Colors.black,
+      barrierDismissible: true,
+      barrierLabel: "EditConversationTitle",
+      transitionDuration: const Duration(milliseconds: 150),
+      pageBuilder: (ctx, animation, secondaryAnimation) {
+        return Center(
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              width: screenWidth * 0.8,
+              decoration: BoxDecoration(
+                color: isDarkTheme ? const Color(0xFF2D2F2E) : Colors.grey[200],
+                borderRadius: BorderRadius.circular(screenWidth * 0.03),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Üst kısım: Başlık ve normal input field
+                  Padding(
+                    padding: EdgeInsets.all(screenWidth * 0.04),
+                    child: Column(
+                      children: [
+                        Text(
+                          loc.editConversationTitle,
+                          style: TextStyle(
+                            color: isDarkTheme ? Colors.white : Colors.black,
+                            fontSize: screenWidth * 0.05,
+                            fontWeight: FontWeight.bold,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        SizedBox(height: screenWidth * 0.04),
+                        TextField(
+                          controller: controller,
+                          decoration: InputDecoration(
+                            labelText: loc.newTitle,
+                            labelStyle: TextStyle(
+                              color: isDarkTheme ? Colors.white : Colors.black,
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                color: isDarkTheme ? Colors.white54 : Colors.black54,
+                              ),
+                              borderRadius: BorderRadius.circular(screenWidth * 0.02),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderSide: BorderSide(
+                                color: isDarkTheme ? Colors.white : Colors.black,
+                              ),
+                              borderRadius: BorderRadius.circular(screenWidth * 0.02),
+                            ),
+                          ),
+                          style: TextStyle(
+                            color: isDarkTheme ? Colors.white : Colors.black,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Çizgi ayırıcı
+                  Divider(
+                    color: isDarkTheme ? Colors.white30 : Colors.black26,
+                    thickness: 0.5,
+                    height: 1,
+                  ),
+                  // Butonlar bölümü (İptal - Kaydet)
+                  IntrinsicHeight(
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () => Navigator.of(ctx).pop(),
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.red,
+                              padding: EdgeInsets.symmetric(vertical: screenWidth * 0.04),
+                            ),
+                            child: Text(
+                              loc.cancel,
+                              style: TextStyle(fontSize: screenWidth * 0.035),
+                            ),
+                          ),
+                        ),
+                        VerticalDivider(
+                          color: isDarkTheme ? Colors.white30 : Colors.black26,
+                          thickness: 0.5,
+                          width: 1,
+                        ),
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () {
+                              String newText = controller.text.trim();
+                              if (newText.isNotEmpty) {
+                                widget.onEdit(newText);
+                              }
+                              Navigator.of(ctx).pop();
+                            },
+                            style: TextButton.styleFrom(
+                              foregroundColor: Colors.blue,
+                              padding: EdgeInsets.symmetric(vertical: screenWidth * 0.04),
+                            ),
+                            child: Text(
+                              loc.save,
+                              style: TextStyle(fontSize: screenWidth * 0.035),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          content: TextField(
-            controller: controller,
-            decoration: InputDecoration(
-              labelText: loc.newTitle,
-              labelStyle: TextStyle(
-                color: isDarkTheme ? Colors.white : Colors.black,
-              ),
-              focusedBorder: UnderlineInputBorder(
-                borderSide: BorderSide(
-                  color: isDarkTheme ? Colors.white : Colors.black,
-                ),
-              ),
-              enabledBorder: UnderlineInputBorder(
-                borderSide: BorderSide(
-                  color: isDarkTheme ? Colors.white : Colors.black,
-                ),
-              ),
-            ),
-            style: TextStyle(
-              color: isDarkTheme ? Colors.white : Colors.black,
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: Text(
-                loc.cancel,
-                style: TextStyle(
-                  color: isDarkTheme ? Colors.white : Colors.black,
-                ),
-              ),
-            ),
-            TextButton(
-              onPressed: () {
-                String newText = controller.text.trim();
-                if (newText.isNotEmpty) {
-                  widget.onEdit(newText);
-                }
-                Navigator.of(dialogContext).pop();
-              },
-              child: Text(
-                loc.save,
-                style: TextStyle(
-                  color: isDarkTheme ? Colors.white : Colors.black,
-                ),
-              ),
-            ),
-          ],
         );
       },
-    );
+      transitionBuilder: (ctx, animation, secondaryAnimation, child) {
+        return FadeTransition(opacity: animation, child: child);
+      },
+    ).then((_) {
+      // Diyalog kapandıktan sonra bayrağı sıfırla
+      _isDialogOpen = false;
+    });
   }
 
   String _formatDate(DateTime date) {

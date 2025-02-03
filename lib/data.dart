@@ -138,8 +138,9 @@ class ModelData {
         'isServerSide': true,
         'features': 'supermodel',
         'parameters': '50 ${appLocalizations.billions}',
-        'context': '131 ${appLocalizations.thousand}', // Estimated
-        'stars': '5stars135/4stars105/3stars25/2stars10/1stars4'
+        'context': '131 ${appLocalizations.thousand}',
+        'stars': '5stars135/4stars105/3stars25/2stars10/1stars4',
+        'canHandleImage': true,
       },
       {
         'id': 'chatgpt4omini',

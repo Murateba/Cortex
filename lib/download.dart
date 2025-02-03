@@ -24,6 +24,11 @@ class FileDownloadHelper extends ChangeNotifier {
   // Görevleri (tasks) takip ediyoruz.
   final Map<String, _DownloadTaskInfo> _tasks = {};
 
+  /// Dışarıdan çağırarak provider dinleyicilerini tetiklemek için public refresh metodu.
+  void refresh() {
+    notifyListeners();
+  }
+
   void _bindBackgroundIsolate() {
     // Var olan port mapping varsa kaldırıp yeniden kayıt yapıyoruz.
     if (IsolateNameServer.lookupPortByName('downloader_send_port') != null) {
@@ -39,7 +44,8 @@ class FileDownloadHelper extends ChangeNotifier {
 
         final DownloadTaskStatus status = DownloadTaskStatus.values[statusInt];
         _status = _statusFromDownloadStatus(status);
-        notifyListeners();
+        // Burada refresh() metodu da çağrılabilir:
+        refresh();
 
         final taskInfo = _tasks[taskId];
         if (taskInfo != null) {
@@ -127,7 +133,7 @@ class FileDownloadHelper extends ChangeNotifier {
   }) async {
     try {
       _status = 'İndiriliyor';
-      notifyListeners();
+      refresh();
 
       final file = File(filePath);
       final savedDir = file.parent.path;
@@ -164,7 +170,7 @@ class FileDownloadHelper extends ChangeNotifier {
       return taskId;
     } catch (e) {
       _status = 'İndirilemedi';
-      notifyListeners();
+      refresh();
       onDownloadError('An error occurred: $e');
       return null;
     }

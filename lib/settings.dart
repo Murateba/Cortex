@@ -1,4 +1,4 @@
-// account.dart
+// settings.dart
 import 'dart:async';
 
 import 'package:cortex/theme.dart';

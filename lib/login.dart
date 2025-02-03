@@ -116,6 +116,9 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
   bool _agreeToTerms = false;
 
+  final TextEditingController _loginEmailController = TextEditingController();
+  final TextEditingController _registerEmailController = TextEditingController();
+
   // Kullanıcı adı için regex
   final RegExp _usernameRegExp = RegExp(
     r'^[abcçdefgğhıijklmnoöprsştuüvyzxqw0-9\.\-_]{3,16}$',
@@ -125,7 +128,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   @override
   void initState() {
     super.initState();
-    _loadUserEmail();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _notificationService =
@@ -161,6 +163,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
   @override
   void dispose() {
+    _loginEmailController.dispose();
+    _registerEmailController.dispose();
     _mainAnimationController.dispose();
     // Shake controller’ları
     _loginEmailShakeController.dispose();
@@ -169,20 +173,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     _registerEmailShakeController.dispose();
     _registerPasswordShakeController.dispose();
     _registerConfirmPasswordShakeController.dispose();
-
     super.dispose();
-  }
-
-  Future<void> _loadUserEmail() async {
-    SharedPreferences prefs = await SharedPreferences.getInstance();
-    bool rememberMe = prefs.getBool('remember_me') ?? false;
-    String email = prefs.getString('email') ?? '';
-    if (rememberMe && email.isNotEmpty) {
-      setState(() {
-        _rememberMe = rememberMe;
-        _email = email;
-      });
-    }
   }
 
   Future<void> _saveUserEmail() async {
@@ -207,8 +198,11 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
   void _switchAuthMode() {
     setState(() {
-      _authMode =
-      _authMode == AuthMode.login ? AuthMode.register : AuthMode.login;
+      // Mod değişirken mevcut form alanlarını resetleyelim.
+      _loginFormKey.currentState?.reset();
+      _registerFormKey.currentState?.reset();
+      _loginEmailController.clear();
+      _registerEmailController.clear();
       _loginEmailError = null;
       _loginPasswordError = null;
       _registerUsernameError = null;
@@ -216,9 +210,11 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       _registerPasswordError = null;
       _registerConfirmPasswordError = null;
 
-      if (_authMode == AuthMode.register) {
+      if (_authMode == AuthMode.login) {
+        _authMode = AuthMode.register;
         _mainAnimationController.forward();
       } else {
+        _authMode = AuthMode.login;
         _mainAnimationController.reverse();
       }
     });
@@ -483,7 +479,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           ShakeWidget(
             controller: _loginEmailShakeController,
             child: TextFormField(
-              initialValue: _email,
+              controller: _loginEmailController,
               style: TextStyle(
                 color: Theme.of(context).textTheme.bodyLarge?.color,
               ),
@@ -663,6 +659,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
           ShakeWidget(
             controller: _registerUsernameShakeController,
             child: TextFormField(
+              controller: _registerEmailController,
               style: TextStyle(
                 color: Theme.of(context).textTheme.bodyLarge?.color,
               ),
@@ -900,7 +897,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                 ),
                 onPressed: (_isLoading || !_agreeToTerms) ? null : _submit,
                 child: Text(
-                  appLocalizations.logIn,
+                  appLocalizations.signUp,
                   style: TextStyle(
                     fontSize: 18,
                     color: isDarkTheme ? Colors.black : Colors.white,

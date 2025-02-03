@@ -1711,6 +1711,7 @@ class _ModelsScreenState extends State<ModelsScreen>
           _myModels.removeWhere((m) => m['id'] == id);
         });
       }
+      Provider.of<FileDownloadHelper>(context, listen: false).notifyListeners();
     }
   }
 

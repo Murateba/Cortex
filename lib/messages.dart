@@ -336,14 +336,8 @@ class _AIMessageTileState extends State<AIMessageTile>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedOpacity(
-      opacity: widget.shouldFadeOut ? 0.0 : 1.0,
-      duration: const Duration(milliseconds: 200),
-      onEnd: () {
-        if (widget.shouldFadeOut) {
-          widget.onFadeOutComplete?.call();
-        }
-      },
+    return FadeTransition(
+      opacity: _fadeOutAnimation,
       child: RawGestureDetector(
         gestures: {
           ShortLongPressGestureRecognizer:
@@ -359,46 +353,71 @@ class _AIMessageTileState extends State<AIMessageTile>
             },
           ),
         },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Left side: avatar image
-              if (widget.imagePath.isNotEmpty)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(15.0),
-                  child: Image.asset(
-                    widget.imagePath,
-                    width: 30,
-                    height: 30,
-                    fit: BoxFit.cover,
-                  ),
-                )
-              else
-                Container(
-                  width: 30,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    color: widget.isDarkTheme
-                        ? Colors.grey[700]
-                        : Colors.grey[300],
-                    borderRadius: BorderRadius.circular(15.0),
-                  ),
-                  child: Icon(
-                    Icons.person,
-                    color: widget.isDarkTheme ? Colors.white : Colors.black,
-                    size: 16,
+        child: AnimatedBuilder(
+          animation: _chunkFadeInController,
+          builder: (context, child) {
+            final chunkOpacity = _chunkFadeInAnimation.value;
+            return Material(
+              color: Colors.transparent,
+              child: Ink(
+                decoration: BoxDecoration(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(26.0),
+                ),
+                child: InkWell(
+                  onTap: () => FocusScope.of(context).unfocus(),
+                  onLongPress: () => _handleLongPress(context, Offset.zero),
+                  borderRadius: BorderRadius.circular(26.0),
+                  splashColor: widget.isDarkTheme
+                      ? Colors.white.withOpacity(0.1)
+                      : Colors.black.withOpacity(0.1),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                        vertical: 8.0, horizontal: 16.0),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // Solda modelin küçük avatar resmi
+                        if (widget.imagePath.isNotEmpty)
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(15.0),
+                            child: Image.asset(
+                              widget.imagePath,
+                              width: 30,
+                              height: 30,
+                              fit: BoxFit.cover,
+                            ),
+                          )
+                        else
+                          Container(
+                            width: 30,
+                            height: 30,
+                            decoration: BoxDecoration(
+                              color: widget.isDarkTheme
+                                  ? Colors.grey[700]
+                                  : Colors.grey[300],
+                              borderRadius: BorderRadius.circular(15.0),
+                            ),
+                            child: Icon(
+                              Icons.person,
+                              color: widget.isDarkTheme
+                                  ? Colors.white
+                                  : Colors.black,
+                              size: 16,
+                            ),
+                          ),
+                        const SizedBox(width: 16.0),
+                        // Metin içeriği
+                        Expanded(
+                          child: _buildMessageContent(chunkOpacity),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              const SizedBox(width: 16.0),
-              // Message text content
-              Expanded(
-                // Pass _chunkFadeInAnimation.value as the required parameter
-                child: _buildMessageContent(_chunkFadeInAnimation.value),
               ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );

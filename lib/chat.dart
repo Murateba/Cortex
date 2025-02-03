@@ -12,11 +12,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:uuid/uuid.dart';
-import 'account.dart';
+import 'settings.dart';
 import 'data.dart';
 import 'download.dart';
 import 'main.dart';
-import 'menu.dart';
+import 'conversations.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'api.dart';
 import 'messages.dart';
@@ -784,6 +784,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
   File? _selectedPhoto;
   bool _isPhotoLoading = false;
   final ImagePicker _imagePicker = ImagePicker();
+  bool _showPhotoContent = false;
 
   static const MethodChannel llamaChannel =
   MethodChannel('com.vertex.cortex/llama');
@@ -811,6 +812,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
   }
 
   bool _openedFromMenu = false;
+  bool _shouldHideImmediately = false;
 
   @override
   void didChangeDependencies() {
@@ -1545,7 +1547,10 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
     });
   }
 
-  void _selectModel(ModelInfo model) {
+  void _selectModel(ModelInfo model) async {
+    // Yeni sohbet başlamadan önce eski verileri temizle:
+    await resetConversation(); // conversationID, widget.conversationID, conversationTitle, messages vs. sıfırlanır
+
     setState(() {
       modelId = model.id;
       modelTitle = model.title;
@@ -1555,6 +1560,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
       modelPath = model.path;
       role = model.role;
       canHandleImage = model.canHandleImage;
+      // Burada conversationID ve conversationTitle sıfırlı kalmalıdır.
     });
 
     if (isServerSideModel(model.id)) {
@@ -1589,7 +1595,6 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
       isWaitingForResponse = false;
       _isSendButtonVisible = false;
       responseStopped = false;
-      _showScrollDownButton = false;
       _fadeOutCount = 0;
       if (resetModel) {
         isModelSelected = false;
@@ -2235,18 +2240,24 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
   }
 
   Future<bool> _onWillPop() async {
+    if (isWaitingForResponse) {
+      await _stopResponse();
+    }
+
+    // Menüden geldiysek:
     if (_openedFromMenu) {
-      // Menüden açılmış sohbetse: direkt menüye yönlendir
+      // Konuşma sıfırlansın ki ID temizlensin
+      await resetConversation();
+      // Ekranı kapatıp tekrar menüye dön
       mainScreenKey.currentState?.onItemTapped(2);
       return false;
-    } else if (isModelSelected) {
-      if (isWaitingForResponse) {
-        await _stopResponse();
-      }
-      // Önce bottomAppBar'ı gizleyin:
-      mainScreenKey.currentState?.updateBottomAppBarVisibility(true);
-      // Yeni sohbet (model seçimiyle açılmış): model verilerini temizle
+    }
+    // Model seçiliyse (yeni bir sohbete başlamışsak ama yine back tuşuna basmışsak):
+    else if (isModelSelected) {
+      // Konuşmayı sıfırlıyoruz
+      await resetConversation();
       setState(() {
+        // Model verisini de temizleyebilirsiniz.
         isModelSelected = false;
         modelTitle = null;
         modelDescription = null;
@@ -2256,8 +2267,11 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
         role = null;
         isModelLoaded = false;
       });
+      mainScreenKey.currentState?.updateBottomAppBarVisibility(true);
       return false;
     }
+
+    // Aksi halde pop normal şekilde devam etsin
     return true;
   }
 
@@ -2276,6 +2290,18 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
       if (pickedFile != null) {
         setState(() {
           _selectedPhoto = File(pickedFile.path);
+          _showPhotoContent = false; // İlk başta içerik görünmesin.
+        });
+        // Panelin açılma animasyonu süresi kadar (300 ms) bekleyip,
+        // fotoğrafın fade-in ile görünmesini tetikliyoruz.
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (_selectedPhoto != null) {
+            setState(() {
+              _showPhotoContent = true;
+            });
+          }
+        });
+        setState(() {
           _isSendButtonVisible = true;
         });
       }
@@ -2286,58 +2312,15 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
 
   void _removeSelectedPhoto() {
     setState(() {
-      _selectedPhoto = null;
-      _isSendButtonVisible = _controller.text.isNotEmpty;
+      _showPhotoContent = false;
     });
-  }
-
-  Widget _buildSelectedPhotoPanel(bool isDarkTheme) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
-
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 200),
-      transitionBuilder: (child, animation) {
-        return SizeTransition(
-          sizeFactor: animation,
-          axisAlignment: 1.0,
-          child: child,
-        );
-      },
-      child: (_selectedPhoto != null)
-          ? Container(
-        key: const ValueKey('photoPanel'),
-        margin: EdgeInsets.only(bottom: screenHeight * 0.01),
-        padding: EdgeInsets.all(screenWidth * 0.02),
-        decoration: BoxDecoration(
-          color: isDarkTheme ? const Color(0xFF090909) : Colors.white,
-          borderRadius: BorderRadius.circular(12.0),
-        ),
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(8.0),
-              child: Image.file(
-                _selectedPhoto!,
-                width: screenWidth * 0.13,
-                height: screenWidth * 0.13,
-                fit: BoxFit.cover,
-              ),
-            ),
-            SizedBox(width: screenWidth * 0.03),
-            GestureDetector(
-              onTap: _removeSelectedPhoto,
-              child: Icon(
-                Icons.close,
-                size: screenWidth * 0.05,
-                color: isDarkTheme ? Colors.white : Colors.black,
-              ),
-            ),
-          ],
-        ),
-      )
-          : const SizedBox.shrink(),
-    );
+    // Eğer panelin kapanma animasyonunda AnimatedSwitcher'ın fade-out
+    // efekti ile kaybolmasını isterseniz bir miktar gecikme ekleyebilirsiniz.
+    Future.delayed(const Duration(milliseconds: 300), () {
+      setState(() {
+        _selectedPhoto = null;
+      });
+    });
   }
 
   Widget _buildActionButton(bool isDarkTheme) {
@@ -2447,6 +2430,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
   }
 
   Widget _buildInputField(AppLocalizations localizations, bool isDarkTheme) {
+    // Henüz model seçilmediyse hiçbir şey göstermiyoruz.
     if (!isModelSelected) {
       return const SizedBox.shrink();
     }
@@ -2454,36 +2438,92 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (_selectedPhoto != null || _isPhotoLoading)
-          _buildSelectedPhotoPanel(isDarkTheme),
-        Padding(
-          padding: EdgeInsets.fromLTRB(
-            screenWidth * 0.02,
-            0.0,
-            screenWidth * 0.02,
-            screenHeight * 0.01,
-          ),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: screenHeight * 0.2),
-            child: Container(
-              key: _inputFieldKey,
-              decoration: BoxDecoration(
-                color: isDarkTheme ? const Color(0xFF161616) : Colors.grey[300],
-                borderRadius: BorderRadius.circular(25),
+    return Padding(
+      // Genel padding ayarları
+      padding: EdgeInsets.fromLTRB(
+        screenWidth * 0.02,
+        0.0,
+        screenWidth * 0.02,
+        screenHeight * 0.005, // Alt boşluk azaltıldı.
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: isDarkTheme ? const Color(0xFF161616) : Colors.grey[300],
+          borderRadius: BorderRadius.circular(25),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Fotoğraf paneli (AnimatedSize + AnimatedSwitcher ile geçişli)
+            AnimatedSize(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                transitionBuilder: (Widget child, Animation<double> animation) {
+                  return FadeTransition(opacity: animation, child: child);
+                },
+                child: _selectedPhoto != null
+                    ? Padding(
+                  key: const ValueKey('photoPanel'),
+                  padding: EdgeInsets.all(screenWidth * 0.03),
+                  child: Stack(
+                    children: [
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(8.0),
+                          child: Image.file(
+                            _selectedPhoto!,
+                            width: screenWidth * 0.25,
+                            height: screenWidth * 0.25,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                      Positioned(
+                        top: 0,
+                        right: 0,
+                        child: GestureDetector(
+                          onTap: _removeSelectedPhoto,
+                          child: Container(
+                            decoration: const BoxDecoration(
+                              color: Colors.black87,
+                              shape: BoxShape.circle,
+                            ),
+                            padding: EdgeInsets.all(screenWidth * 0.01),
+                            child: Icon(
+                              Icons.close,
+                              size: screenWidth * 0.045,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+                    : const SizedBox.shrink(),
+              ),
+            ),
+            // Metin girişi ve aksiyon butonlarının bulunduğu alan.
+            Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: screenWidth * 0.03,
+                vertical: screenHeight * 0.001,
               ),
               child: Stack(
                 children: [
                   Row(
                     children: [
                       if (canHandleImage) ...[
-                        SizedBox(width: screenWidth * 0.025),
                         GestureDetector(
-                          onTap: _selectedPhoto == null && !_isPhotoLoading ? _pickPhoto : null,
+                          onTap: _selectedPhoto == null && !_isPhotoLoading
+                              ? _pickPhoto
+                              : null,
                           child: Opacity(
-                            opacity: _selectedPhoto == null && !_isPhotoLoading ? 1.0 : 0.5,
+                            opacity:
+                            _selectedPhoto == null && !_isPhotoLoading ? 1.0 : 0.5,
                             child: Icon(
                               Icons.add,
                               color: isDarkTheme ? Colors.white : Colors.black,
@@ -2491,12 +2531,12 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
                             ),
                           ),
                         ),
+                        SizedBox(width: screenWidth * 0.02),
                       ],
-                      SizedBox(width: screenWidth * 0.025),
+                      // Metin girişi
                       Expanded(
                         child: TextField(
                           cursorColor: isDarkTheme ? Colors.white : Colors.black,
-                          focusNode: _textFieldFocusNode,
                           controller: _controller,
                           maxLength: 4000,
                           minLines: 1,
@@ -2511,10 +2551,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
                             ),
                             border: InputBorder.none,
                             counterText: '',
-                            contentPadding: EdgeInsets.symmetric(
-                              vertical: screenHeight * 0.012,
-                              horizontal: 0,
-                            ),
+                            contentPadding: EdgeInsets.zero,
                           ),
                           style: TextStyle(
                             color: isDarkTheme ? Colors.white : Colors.black,
@@ -2524,27 +2561,27 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
                           onSubmitted: (text) {
                             if (_isSendButtonEnabled) _sendMessage();
                           },
-                          enabled: true,
                         ),
                       ),
                       SizedBox(width: screenWidth * 0.02),
                       _buildActionButton(isDarkTheme),
-                      SizedBox(width: screenWidth * 0.03),
                     ],
                   ),
                   Positioned(
                     top: screenHeight * 0.01,
-                    right: screenWidth * 0.056,
+                    right: screenWidth * 0.03,
                     child: IgnorePointer(
                       ignoring: _getInputLineCount(
                         _controller.text,
                         screenWidth - (screenWidth * 0.04),
-                      ) <= 2,
+                      ) <=
+                          2,
                       child: AnimatedOpacity(
                         opacity: _getInputLineCount(
                           _controller.text,
                           screenWidth - (screenWidth * 0.04),
-                        ) > 2
+                        ) >
+                            2
                             ? 1.0
                             : 0.0,
                         duration: const Duration(milliseconds: 100),
@@ -2563,9 +2600,9 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
                 ],
               ),
             ),
-          ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
@@ -2634,6 +2671,10 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
     final localizations = AppLocalizations.of(context)!;
     final isDarkTheme = Provider.of<ThemeProvider>(context).isDarkTheme;
     final screenHeight = MediaQuery.of(context).size.height;
+
+    if (_shouldHideImmediately) {
+      return Container();
+    }
 
     return WillPopScope(
       onWillPop: _onWillPop,
@@ -3017,11 +3058,13 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
             await _stopResponse();
           }
           if (_openedFromMenu) {
-            // Menüden açılmış sohbetse; doğrudan menü ekranına yönlendir:
+            setState(() {
+              _shouldHideImmediately = true;
+            });
             mainScreenKey.currentState?.onItemTapped(2);
+            mainScreenKey.currentState?.updateBottomAppBarVisibility(true);
+            return;
           } else {
-            // Yeni sohbet (model seçimiyle açılmış):
-            // Önce bottomAppBar'ı gizle (hideBottomAppBar true olsun)
             mainScreenKey.currentState?.updateBottomAppBarVisibility(true);
             await resetConversation();
             setState(() {

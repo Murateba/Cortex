@@ -12,7 +12,7 @@ import 'chat.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'models.dart';
 import 'download.dart';
-import 'menu.dart';
+import 'conversations.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
@@ -263,25 +263,39 @@ class AuthWrapper extends StatelessWidget {
   }
 
   Future<Widget> _decideScreen() async {
-    // 1) Remember me ve user var mı?
+    // 1) Önce "remember me" ve FirebaseAuth'dan oturum açmış mı diye kontrol edelim.
     bool hasRememberAndUser = await _checkRememberMe();
     User? user = FirebaseAuth.instance.currentUser;
     if (!hasRememberAndUser || user == null) {
       return const LoginScreen();
     }
 
-    // 2) Kullanıcı bilgisini yenileyelim
+    // 2) Firestore'da kullanıcı belgesinin var olup olmadığını kontrol edelim.
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (!userDoc.exists) {
+        // Eğer kullanıcı belgesi bulunmuyorsa, direkt login ekranına yönlendir.
+        return const LoginScreen();
+      }
+    } catch (e) {
+      print("Firestore sorgusunda hata oluştu: $e");
+      return const LoginScreen();
+    }
+
+    // 3) Kullanıcı bilgisini yenileyelim
     try {
       await user.reload();
     } catch (e) {
       print("Kullanıcı bilgileri reload edilemedi: $e");
-      // Eğer reload edilemiyorsa (örneğin offline durumdaysak) direkt ana ekrana gönderiyoruz.
       return mainScreen;
     }
 
-    // 3) Firebase Auth üzerinden e-mail doğrulama durumunu kontrol edelim:
+    // 4) Email doğrulama kontrolü: Eğer e-mail doğrulanmışsa ana ekrana yönlendir.
     if (user.emailVerified) {
-      // Doğrulanmış hesaplar direkt ana ekrana yönlendirilecek.
       return mainScreen;
     } else {
       // Doğrulanmamış hesaplar için Firestore’daki kullanıcı belgesinden bazı bilgileri alıp,
@@ -301,7 +315,7 @@ class AuthWrapper extends StatelessWidget {
           email: data['email'] ?? '',
           username: data['username'] ?? '',
           userId: user.uid,
-          password: '', // İhtiyaç duyuluyorsa bu alan doldurulabilir.
+          password: '', // Gerekirse doldurulabilir.
         );
       } catch (e) {
         print("Firestore sorgusunda hata oluştu: $e");
