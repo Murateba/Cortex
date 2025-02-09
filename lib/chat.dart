@@ -1,3 +1,5 @@
+// chat.dart
+
 import 'dart:convert';
 import 'dart:ui';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -51,8 +53,8 @@ class Message {
   bool isReported;
   String? photoPath; // Yeni field for photo path
   bool isPhotoUploading;
-
   List<InlineSpan>? parsedSpans;
+  final ValueNotifier<String> notifier;  // <-- EKLENDİ
 
   Message({
     required this.text,
@@ -62,23 +64,24 @@ class Message {
     this.isPhotoUploading = false,
     this.photoPath,
     this.parsedSpans,
-  });
+  }) : notifier = ValueNotifier(text);  // Başlangıç değeri
 }
 
 class PhotoViewer extends StatelessWidget {
   final File imageFile;
   const PhotoViewer({Key? key, required this.imageFile}) : super(key: key);
 
-  /// 50 ms açılma ve kapanma süresi
+  /// 50 ms açılma ve kapanma süresiyle geçiş yapan route metodu.
   static Route route(File imageFile) {
     return PageRouteBuilder(
       transitionDuration: const Duration(milliseconds: 50),
       reverseTransitionDuration: const Duration(milliseconds: 50),
-      opaque: false, // Arka planın görünmesini sağlar
+      opaque: false,
       barrierDismissible: false,
       pageBuilder: (_, __, ___) => PhotoViewer(imageFile: imageFile),
       transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        final fadeAnim = Tween<double>(begin: 0.0, end: 1.0).animate(animation);
+        final fadeAnim =
+        Tween<double>(begin: 0.0, end: 1.0).animate(animation);
         final scaleAnim = Tween<double>(begin: 0.90, end: 1.0).animate(
           CurvedAnimation(parent: animation, curve: Curves.easeOut),
         );
@@ -94,171 +97,229 @@ class PhotoViewer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final localizations = AppLocalizations.of(context)!;
-    final _notificationService = Provider.of<NotificationService>(context, listen: false);
+    final notificationService =
+    Provider.of<NotificationService>(context, listen: false);
+    final Size screenSize = MediaQuery.of(context).size;
+
+    // Dinamik boyutlar (oranlar isteğe göre ayarlanabilir):
+    final double horizontalMargin = screenSize.width * 0.05; // %5
+    final double imageTopMargin = screenSize.height * 0.1;     // %10
+    final double imageBottomMargin = screenSize.height * 0.1;  // %10
+
+    final double availableWidth = screenSize.width - (horizontalMargin * 2);
+    final double availableHeight =
+        screenSize.height - imageTopMargin - imageBottomMargin;
+
+    // Buton ve ikon boyutları:
+    final double closeButtonSize = screenSize.width * 0.07;
+    final double bottomRowVerticalMargin = screenSize.height * 0.02;
+    final double iconSize = screenSize.width * 0.05;
+    final double fontSize = screenSize.width * 0.03;
+
+    // Gradient overlay yüksekliği: alt kısımda, fotoğrafın üzerinde görünecek.
+    final double gradientHeight = screenSize.height * 0.2;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      // Tüm ekranı kapsaması için doğrudan Stack kullanıyoruz.
       body: Stack(
         children: [
-          // Tüm ekranı kaplayan blur ve overlay
+          // Arka planı bulanıklaştıran overlay (arka planda kalır)
           Positioned.fill(
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0),
-              child: Container(
-                color: Colors.black.withOpacity(0.3),
-              ),
+              child: Container(color: Colors.black.withOpacity(0.2)),
             ),
           ),
-          // Diğer içerikleri SafeArea içine alıyoruz.
+          // Tüm içerikler SafeArea içinde; fotoğraf, gradient ve butonlar katman sırasına göre:
           SafeArea(
             child: Stack(
               children: [
-                // Resim: Ortalanmış, sadece ölçeklendirilebilsin (pan devre dışı)
+                // Fotoğraf katmanı (arka planda)
                 Center(
-                  child: InteractiveViewer(
-                    panEnabled: false,
-                    scaleEnabled: true,
-                    // Artık küçültme yapılmasın, sadece büyütme mümkün olsun:
-                    minScale: 1.0,
-                    maxScale: 4.0,
-                    boundaryMargin: const EdgeInsets.all(1000),
-                    clipBehavior: Clip.none,
-                    // Resmi biraz iç kenarlardan geçiriyoruz ve köşeleri yuvarlatıyoruz
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 30), // yatay margin
+                  child: Container(
+                    margin: EdgeInsets.only(
+                      left: horizontalMargin,
+                      right: horizontalMargin,
+                      top: imageTopMargin,
+                      bottom: imageBottomMargin,
+                    ),
+                    constraints: BoxConstraints(
+                      maxWidth: availableWidth,
+                      maxHeight: availableHeight,
+                    ),
+                    child: InteractiveViewer(
+                      panEnabled: false,
+                      scaleEnabled: true,
+                      minScale: 1.0,
+                      maxScale: 4.0,
+                      boundaryMargin:
+                      EdgeInsets.all(screenSize.width * 0.1),
+                      clipBehavior: Clip.none,
                       child: ClipRRect(
-                        borderRadius: BorderRadius.circular(20), // köşe yuvarlama
+                        borderRadius:
+                        BorderRadius.circular(screenSize.width * 0.02),
                         child: Image.file(
                           imageFile,
-                          fit: BoxFit.contain, // resmin orantısının korunması için
+                          fit: BoxFit.contain,
                         ),
                       ),
                     ),
                   ),
                 ),
-                // Kapat (X) butonu
+                // Gradient overlay: fotoğrafın üzerinde, alt kısımda görünür.
                 Positioned(
-                  top: 10,
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  height: gradientHeight,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.bottomCenter,
+                        end: Alignment.topCenter,
+                        colors: [
+                          Colors.black.withOpacity(0.5),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                // Üstte ortalanmış kapan (X) butonu
+                Positioned(
+                  top: screenSize.height * 0.02,
                   left: 0,
                   right: 0,
                   child: Center(
                     child: IconButton(
-                      icon: const Icon(Icons.close, color: Colors.white),
+                      icon: Icon(
+                        Icons.close,
+                        color: Colors.white,
+                        size: closeButtonSize,
+                      ),
                       onPressed: () => Navigator.of(context).pop(),
                     ),
                   ),
                 ),
-                // Paylaş ve İndir butonları
+                // Alt kısımda paylaşma ve indirme butonları
                 Positioned(
-                  bottom: 15,
-                  left: 70,
-                  right: 70,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      // PAYLAŞ butonu
-                      GestureDetector(
-                        onTap: () async {
-                          await Share.shareXFiles([XFile(imageFile.path)]);
-                        },
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SvgPicture.asset(
-                              'assets/share.svg',
-                              width: 20,
-                              height: 20,
-                              color: Colors.white,
+                  bottom: bottomRowVerticalMargin,
+                  left: 0,
+                  right: 0,
+                  child: Padding(
+                    padding:
+                    EdgeInsets.symmetric(horizontal: screenSize.width * 0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        // Paylaş butonu
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () async {
+                              await Share.shareXFiles(
+                                  [XFile(imageFile.path)]);
+                            },
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SvgPicture.asset(
+                                  'assets/share.svg',
+                                  width: iconSize,
+                                  height: iconSize,
+                                  color: Colors.white,
+                                ),
+                                SizedBox(height: screenSize.height * 0.005),
+                                Text(
+                                  localizations.share,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: fontSize,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              localizations.share,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
-                      Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 90),
-                        height: 50,
-                        width: 0.4,
-                        color: Colors.white,
-                      ),
-                      // İNDİR butonu (GallerySaver Plus kullanımı)
-                      GestureDetector(
-                        onTap: () async {
-                          try {
-                            final tempDir = await getTemporaryDirectory();
-                            final baseName = 'cortex';
-                            const extension = '.jpg';
-                            int i = 0;
-                            late File localFile;
-
-                            while (true) {
-                              final fileName = i == 0
-                                  ? '$baseName$extension'
-                                  : '$baseName-$i$extension';
-                              localFile = File(path.join(tempDir.path, fileName));
-                              if (!(await localFile.exists())) {
-                                break;
+                        // Dikey ayırıcı
+                        Container(
+                          width: screenSize.width * 0.002,
+                          height: screenSize.height * 0.06,
+                          color: Colors.white,
+                        ),
+                        // İndir butonu
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: () async {
+                              try {
+                                final tempDir = await getTemporaryDirectory();
+                                final baseName = 'cortex';
+                                const extension = '.jpg';
+                                int i = 0;
+                                late File localFile;
+                                while (true) {
+                                  final fileName = i == 0
+                                      ? '$baseName$extension'
+                                      : '$baseName-$i$extension';
+                                  localFile =
+                                      File(path.join(tempDir.path, fileName));
+                                  if (!(await localFile.exists())) {
+                                    break;
+                                  }
+                                  i++;
+                                }
+                                // Resmi geçici dizine kopyala
+                                await imageFile.copy(localFile.path);
+                                // Galeriye kaydet
+                                final bool? success =
+                                await GallerySaver.saveImage(localFile.path);
+                                if (success == true) {
+                                  notificationService.showNotification(
+                                    message: localizations.downloadSuccess,
+                                    isSuccess: true,
+                                    bottomOffset: 0.1,
+                                  );
+                                } else {
+                                  notificationService.showNotification(
+                                    message: localizations.downloadFailed,
+                                    isSuccess: false,
+                                    bottomOffset: 0.1,
+                                  );
+                                }
+                              } catch (e) {
+                                notificationService.showNotification(
+                                  message: localizations.downloadFailed,
+                                  isSuccess: false,
+                                  bottomOffset: 0.1,
+                                );
                               }
-                              i++;
-                            }
-
-                            // Resmi geçici dizine kopyala
-                            await imageFile.copy(localFile.path);
-
-                            // Galeriye kaydet
-                            final bool? success = await GallerySaver.saveImage(localFile.path);
-
-                            if (success == true) {
-                              _notificationService.showNotification(
-                                message: localizations.downloadSuccess,
-                                isSuccess: true,
-                                bottomOffset: 0.1,
-                              );
-                            } else {
-                              _notificationService.showNotification(
-                                message: localizations.downloadFailed,
-                                isSuccess: false,
-                                bottomOffset: 0.1,
-                              );
-                            }
-                          } catch (e) {
-                            _notificationService.showNotification(
-                              message: localizations.downloadFailed,
-                              isSuccess: false,
-                              bottomOffset: 0.1,
-                            );
-                          }
-                        },
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            SvgPicture.asset(
-                              'assets/download.svg',
-                              width: 20,
-                              height: 20,
-                              color: Colors.white,
+                            },
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                SvgPicture.asset(
+                                  'assets/download.svg',
+                                  width: iconSize,
+                                  height: iconSize,
+                                  color: Colors.white,
+                                ),
+                                SizedBox(height: screenSize.height * 0.005),
+                                Text(
+                                  localizations.download,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: fontSize,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
                             ),
-                            const SizedBox(height: 4),
-                            Text(
-                              localizations.download,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -739,7 +800,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
 
   int _hasCortexSubscription = 0;
   int _credits = 0;
-  int _bonusCredits = 0;
+  int _bonusCredits = 100;
   int get totalCredits => _credits + _bonusCredits;
   bool _showLimitReachedWarning = false;
   String _currentWarningMessage = '';
@@ -848,7 +909,12 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
   @override
   void initState() {
     super.initState();
-
+    _loadCachedUserData().then((_) {
+      setState(() {
+      });
+    });
+    _fetchUserData();
+    _updateInternetStatus();
     if (cachedAllModels != null && cachedAllModels!.isNotEmpty) {
       _allModels = List.from(cachedAllModels!);
       _filteredModels = cachedFilteredModels ?? List.from(_allModels);
@@ -857,7 +923,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
       // 2) Otherwise, load fresh:
       _loadModels();
     }
-
+    _loadCachedUserData();
     WidgetsBinding.instance.addObserver(this);
 
     _searchAnimationController = AnimationController(
@@ -953,11 +1019,15 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
     }
   }
 
-// ---------------------------------------------------
-// 1) _fetchUserData() -- now also loads 'conversations' count
-// ---------------------------------------------------
   Future<void> _fetchUserData() async {
     final User? user = FirebaseAuth.instance.currentUser;
+    bool isConnected = await InternetConnection().hasInternetAccess;
+    if (!isConnected) {
+      // İnternet yoksa, doğrudan cache’den verileri yükleyip çıkalım.
+      await _loadCachedUserData();
+      return;
+    }
+
     if (user != null) {
       try {
         final userDoc = await FirebaseFirestore.instance
@@ -970,26 +1040,18 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
           _credits = _userData?['credits'] ?? 0;
           _bonusCredits = _userData?['bonusCredits'] ?? 0;
           _hasCortexSubscription = _userData?['hasCortexSubscription'] ?? 0;
-
-          // <-- NEW: get server-side conversations count from Firestore
-          // (assumes the field is named "conversations" on the user doc)
           _serverSideConversationsCount = _userData?['conversations'] ?? 0;
-
-          // figure out the user’s conversation limit
           _serverSideConversationLimit = _getConversationLimit(_hasCortexSubscription);
-
-          // check if user already hit or exceeded the limit
           _conversationLimitReached = _serverSideConversationsCount >= _serverSideConversationLimit;
 
           final lastResetTimestamp = _userData?['lastResetDate'];
-          if (lastResetTimestamp != null) {
-            _lastResetDate = (lastResetTimestamp as Timestamp).toDate();
-          } else {
-            _lastResetDate = null;
-          }
+          _lastResetDate = lastResetTimestamp != null ? (lastResetTimestamp as Timestamp).toDate() : null;
         });
 
-        // The daily bonus logic below is unchanged from your snippet:
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('cached_user_data', jsonEncode(_userData));
+
+        // Günlük bonus kontrolü…
         if (_lastResetDate == null ||
             DateTime.now().difference(_lastResetDate!).inDays >= 1) {
           int bonus;
@@ -1015,6 +1077,8 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
         }
       } catch (e) {
         print("Error fetching user data: $e");
+        // Hata durumunda cache’den yükle
+        await _loadCachedUserData();
       }
     }
   }
@@ -1211,30 +1275,49 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
     _loadModels();
   }
 
+  Future<void> _loadCachedUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final cachedData = prefs.getString('cached_user_data');
+    if (cachedData != null) {
+      try {
+        final data = jsonDecode(cachedData);
+        setState(() {
+          _userData = data;
+          _credits = data['credits'] ?? 0;
+          _bonusCredits = data['bonusCredits'] ?? 0;
+        });
+      } catch (e) {
+        print("Cache parse hatası: $e");
+      }
+    }
+  }
+
   Future<void> loadModel() async {
     final prefs = await SharedPreferences.getInstance();
-    final selectedModelPath =
-        modelPath ?? prefs.getString('selected_model_path');
+    final selectedModelPath = modelPath ?? prefs.getString('selected_model_path');
     if (selectedModelPath != null && selectedModelPath.isNotEmpty) {
       try {
-        await llamaChannel
-            .invokeMethod('loadModel', {'path': selectedModelPath});
+        await llamaChannel.invokeMethod('loadModel', {'path': selectedModelPath});
+        if (!mounted) return;
         setState(() {
           isModelLoaded = true;
         });
         mainScreenKey.currentState?.updateBottomAppBarVisibility();
-
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          FocusScope.of(context).requestFocus(_textFieldFocusNode);
+          if (mounted) {
+            FocusScope.of(context).requestFocus(_textFieldFocusNode);
+          }
         });
       } catch (e) {
         print('Error loading model: $e');
+        if (!mounted) return;
         setState(() {
           isModelLoaded = false;
         });
         mainScreenKey.currentState?.updateBottomAppBarVisibility();
       }
     } else {
+      if (!mounted) return;
       setState(() {
         isModelLoaded = false;
       });
@@ -1288,13 +1371,15 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
       String chunk = _responseChunksQueue.removeAt(0);
       setState(() {
         messages.last.text += chunk;
+        messages.last.notifier.value = messages.last.text;
       });
-      _scrollToBottom(forceScroll: true);
+      if (_isUserAtBottom()) {
+        _scrollToBottom();
+      }
       await Future.delayed(const Duration(milliseconds: 300));
     }
     _isProcessingChunks = false;
   }
-
 
   void _onMessageResponse(String token) {
     if (isWaitingForResponse &&
@@ -1349,9 +1434,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
     setState(() {});
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Future.delayed(const Duration(milliseconds: 100), () {
-        _scrollToBottom(forceScroll: true);
-      });
+      _jumpToBottom();
     });
   }
 
@@ -1392,6 +1475,12 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
     storedMessages.add(messageData);
 
     await prefs.setString(conversationID!, jsonEncode(storedMessages));
+  }
+
+  void _jumpToBottom() {
+    if (_scrollController.hasClients) {
+      _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+    }
   }
 
   Future<void> _updateConversationLastMessageText(
@@ -1645,8 +1734,10 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
     if (!_scrollController.hasClients) return false;
     final maxScroll = _scrollController.position.maxScrollExtent;
     final currentScroll = _scrollController.offset;
-    return (maxScroll - currentScroll) <= 10;
+    const double threshold = 100.0;
+    return (maxScroll - currentScroll) <= threshold;
   }
+
 
   Future<void> _scrollToBottom({bool forceScroll = false}) async {
     if (!_scrollController.hasClients) return;
@@ -1823,6 +1914,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
           fontSize: 0.032,
           oneLine: false,
           bottomOffset: 0.08,
+          duration: Duration(seconds: 10)
         );
         return; // Yetersiz kredi olduğundan gönderme iptal ediliyor.
       }
@@ -1846,6 +1938,12 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
 
     // 4) Eğer mevcut konuşma yoksa (conversationID == null) yeni bir konuşma oluştur.
     if (!isRegenerate && conversationID == null) {
+      if (isServerSideModel(modelId)) {
+        if (!hasInternetConnection) {
+          _showInternetRequiredNotification();
+          return;
+        }
+      }
       if (isServerSideModel(modelId)) {
         if (_serverSideConversationsCount >= _serverSideConversationLimit) {
           final notificationService =
@@ -1988,22 +2086,24 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
               }
               hasReceivedFirstChunk = true;
             }
-            setState(() {
-              if (isRegenerate && regenerateAiIndex != null) {
-                messages[regenerateAiIndex].text += partialBuffer.toString();
-              } else {
+            if (partialBuffer.isNotEmpty) {
+              setState(() {
                 messages.last.text += partialBuffer.toString();
-              }
-              partialBuffer.clear();
-            });
-            if (autoScrollOnResponse) {
-              _scrollToBottom(forceScroll: true);
+                partialBuffer.clear();
+              });
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _attemptScrollToBottom();
+              });
+            }
+            if (_isUserAtBottom()) {
+              _scrollToBottom();
             }
           }
         });
 
         String finalResponse = '';
         switch (modelId) {
+
           case 'gemini':
             finalResponse = await apiService.getGeminiResponse(
               text,
@@ -2014,6 +2114,38 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
             break;
           case 'llama':
             finalResponse = await apiService.getLlamaResponse(
+              text,
+              memory,
+              photoPath: photoPath,
+              onStreamChunk: (chunk) => partialBuffer.write(chunk),
+            );
+            break;
+          case 'hermes':
+            finalResponse = await apiService.getHermesResponse(
+              text,
+              memory,
+              photoPath: photoPath,
+              onStreamChunk: (chunk) => partialBuffer.write(chunk),
+            );
+            break;
+          case 'chatgpt4omini':
+            finalResponse = await apiService.getChatGPTResponse(
+              text,
+              memory,
+              photoPath: photoPath,
+              onStreamChunk: (chunk) => partialBuffer.write(chunk),
+            );
+            break;
+          case 'claude3haiku':
+            finalResponse = await apiService.getClaudeResponse(
+              text,
+              memory,
+              photoPath: photoPath,
+              onStreamChunk: (chunk) => partialBuffer.write(chunk),
+            );
+            break;
+          case 'amazonnovalite':
+            finalResponse = await apiService.getNovaResponse(
               text,
               memory,
               photoPath: photoPath,
@@ -2032,7 +2164,6 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
 
         chunkTimer.cancel();
 
-        // Kalan partial chunk verisi ekleniyor.
         if (partialBuffer.isNotEmpty) {
           if (!hasReceivedFirstChunk) {
             setState(() {
@@ -2059,12 +2190,10 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
           _isSendButtonVisible = _controller.text.isNotEmpty;
         });
 
-        // Regenerasyon durumu:
         if (isRegenerate && regenerateAiIndex != null) {
           if (messages[regenerateAiIndex].text.isEmpty) {
             messages[regenerateAiIndex].text = finalResponse;
           }
-          // Eğer mesaj hâlâ “düşünüyor” ise (placeholder) kaydetme.
           if (messages[regenerateAiIndex].text != localizations.thinking) {
             await _saveRegeneratedMessageToConversation(
               finalResponse: messages[regenerateAiIndex].text,
@@ -2072,7 +2201,6 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
             );
           }
         }
-        // Normal yeni AI mesajı durumu:
         else {
           if (messages.isNotEmpty && !messages.last.isUserMessage) {
             if (messages.last.text.isEmpty) {
@@ -2092,8 +2220,6 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
             }
           }
         }
-
-        // Server-side kullanımında kredi düşümü gerçekleştiriliyor.
         await _deductCredits(hadPhoto: photoPath != null);
       }
     } catch (e) {
@@ -2109,6 +2235,16 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
           }
         }
       });
+    }
+  }
+
+  void _attemptScrollToBottom() {
+    if (!_scrollController.hasClients) return;
+    final maxScroll = _scrollController.position.maxScrollExtent;
+    final currentScroll = _scrollController.offset;
+    const double threshold = 100.0;
+    if ((maxScroll - currentScroll) < threshold) {
+      _scrollToBottom(); // forceScroll: true yerine, kullanıcı alt bölgedeyse normal kaydır.
     }
   }
 
@@ -2240,6 +2376,10 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
   }
 
   Future<bool> _onWillPop() async {
+    setState(() {
+      _showScrollDownButton = false;
+    });
+
     if (isWaitingForResponse) {
       await _stopResponse();
     }
@@ -2661,7 +2801,10 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
-      // Reload model list so the “downloading” item updates
+      _updateInternetStatus();
+      setState(() {
+        _conversationLimitReached = _serverSideConversationsCount >= _serverSideConversationLimit;
+      });
       _loadModels();
     }
   }
@@ -2766,38 +2909,42 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
               ),
           ],
         ),
-        floatingActionButton: AnimatedOpacity(
+        floatingActionButton: (isModelSelected && messages.isNotEmpty)
+            ? AnimatedOpacity(
           opacity: _showScrollDownButton ? 1.0 : 0.0,
-          duration: const Duration(milliseconds: 150),
-          child: IgnorePointer(
-            ignoring: !_showScrollDownButton,
-            child: Padding(
-              padding: EdgeInsets.only(
-                bottom: _inputFieldHeight + screenHeight * 0.06,
-              ),
-              // Use a SizedBox to define custom width/height:
-              child: SizedBox(
-                width: 40,   // Customize size
-                height: 40,  // Customize size
-                child: FloatingActionButton(
-                  // Use a custom shape and border radius:
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(22), // Customize radius
-                  ),
-                  elevation: 2.0,
-                  backgroundColor: isDarkTheme ? const Color(0xFF212121) : Colors.black,
-                  onPressed: () => _scrollToBottom(forceScroll: true),
-                  child: Icon(
-                    Icons.arrow_downward,
-                    color: isDarkTheme ? Colors.white : Colors.white,
-                    size: 20, // Customize icon size
+          duration: const Duration(milliseconds: 100),
+          child: AnimatedScale(
+            scale: _showScrollDownButton ? 1.0 : 0.5,
+            duration: const Duration(milliseconds: 100),
+            child: IgnorePointer(
+              ignoring: !_showScrollDownButton,
+              child: Padding(
+                padding: EdgeInsets.only(
+                  bottom: _inputFieldHeight + MediaQuery.of(context).size.height * 0.06,
+                ),
+                child: SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: FloatingActionButton(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(22),
+                    ),
+                    elevation: 2.0,
+                    backgroundColor: isDarkTheme ? const Color(0xFF212121) : Colors.black,
+                    onPressed: () => _scrollToBottom(forceScroll: true),
+                    child: SvgPicture.asset(
+                      'assets/arrov.svg',
+                      color: Colors.white,
+                      width: 30,
+                      height: 30,
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-        ),
-        floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+        )
+            : null,
       ),
     );
   }
@@ -2836,8 +2983,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
   Widget _buildModelGrid(AppLocalizations localizations, bool isDarkTheme) {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
-    final notificationService =
-    Provider.of<NotificationService>(context, listen: false);
+    final notificationService = Provider.of<NotificationService>(context, listen: false);
 
     return _allModels.isNotEmpty
         ? Column(
@@ -2847,8 +2993,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
           child: _buildSearchBar(localizations, isDarkTheme),
         ),
         Expanded(
-          child: _filteredModels.isNotEmpty
-              ? GridView.builder(
+          child: GridView.builder(
             padding: EdgeInsets.all(screenWidth * 0.02),
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 3,
@@ -2861,35 +3006,37 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
             itemBuilder: (context, index) {
               final model = _filteredModels[index];
               bool isServerSide = isServerSideModel(model.id);
-
-              // Updated isDisabled condition: applies only to server-side models
-              bool isDisabled = isServerSide &&
-                  (_conversationLimitReached ||
-                      !hasInternetConnection);
+              // Kullanacağımız internet durumu doğrudan hasInternetConnection üzerinden kontrol ediliyor:
+              bool shouldFade = isServerSide && (!hasInternetConnection || _conversationLimitReached);
 
               return GestureDetector(
                 onTap: () {
-                  if (isDisabled) {
-                    // Show warning only for server-side models when disabled
-                    notificationService.showNotification(
-                      message: localizations
-                          .youReachedConversationLimit, // Ensure this string exists in your localization files
-                      isSuccess: false,
-                      fontSize: 0.032,
-                    );
-                  } else {
-                    _selectModel(model);
-                    _scrollToBottom(forceScroll: true);
+                  if (isServerSide) {
+                    if (!hasInternetConnection) {
+                      notificationService.showNotification(
+                        message: localizations.internetRequired,
+                        isSuccess: false,
+                        fontSize: 0.032,
+                      );
+                      return;
+                    }
+                    if (_conversationLimitReached) {
+                      notificationService.showNotification(
+                        message: localizations.youReachedConversationLimit,
+                        isSuccess: false,
+                        fontSize: 0.032,
+                      );
+                      return;
+                    }
                   }
+                  _selectModel(model);
+                  _scrollToBottom(forceScroll: true);
                 },
                 child: Opacity(
-                  // Apply opacity only if the server-side model is disabled
-                  opacity: isServerSide && isDisabled ? 0.5 : 1.0,
+                  opacity: shouldFade ? 0.5 : 1.0,
                   child: Container(
                     decoration: BoxDecoration(
-                      color: isDarkTheme
-                          ? const Color(0xFF1B1B1B)
-                          : Colors.grey[200],
+                      color: isDarkTheme ? const Color(0xFF1B1B1B) : Colors.grey[200],
                       borderRadius: BorderRadius.circular(12),
                       boxShadow: const [
                         BoxShadow(
@@ -2899,9 +3046,8 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
                         ),
                       ],
                       border: Border.all(
-                          color: isDarkTheme
-                              ? Colors.grey[700]!
-                              : Colors.grey[300]!),
+                        color: isDarkTheme ? Colors.grey[700]! : Colors.grey[300]!,
+                      ),
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -2921,9 +3067,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
                         Text(
                           model.title,
                           style: TextStyle(
-                            color: isDarkTheme
-                                ? Colors.white
-                                : Colors.black,
+                            color: isDarkTheme ? Colors.white : Colors.black,
                             fontSize: screenWidth * 0.035,
                             fontWeight: FontWeight.bold,
                           ),
@@ -2933,9 +3077,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
                         Text(
                           model.producer,
                           style: TextStyle(
-                            color: isDarkTheme
-                                ? Colors.grey[400]
-                                : Colors.grey[600],
+                            color: isDarkTheme ? Colors.grey[400] : Colors.grey[600],
                             fontSize: screenWidth * 0.03,
                           ),
                           textAlign: TextAlign.center,
@@ -2946,16 +3088,6 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
                 ),
               );
             },
-          )
-              : Center(
-            child: Text(
-              localizations.noMatchingModels,
-              style: TextStyle(
-                color:
-                isDarkTheme ? Colors.white70 : Colors.black54,
-                fontSize: screenWidth * 0.04,
-              ),
-            ),
           ),
         ),
       ],
@@ -3020,6 +3152,17 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
         ),
       ],
     );
+  }
+
+  Future<void> _updateInternetStatus() async {
+    bool connection = await InternetConnection().hasInternetAccess;
+    setState(() {
+      hasInternetConnection = connection;
+    });
+  }
+
+  Future<void> _updateChatErrorState() async {
+    bool limitExceeded = _serverSideConversationsCount >= _serverSideConversationLimit;
   }
 
   void _showInternetRequiredNotification() {
@@ -3107,22 +3250,44 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
             const AccountScreen(),
             direction: const Offset(1.0, 0.0),
           ),
-          child: Transform.translate(
-            offset: Offset(-screenWidth * 0.02, screenHeight * 0.0015),
-            child: CircleAvatar(
-              radius: screenWidth * 0.05,
-              backgroundColor: isDarkTheme ? Colors.grey[800] : Colors.grey[300],
-              child: Text(
-                _userData != null &&
-                    _userData!['username'] != null &&
-                    (_userData!['username'] as String).isNotEmpty
-                    ? (_userData!['username'] as String)[0].toUpperCase()
-                    : (FirebaseAuth.instance.currentUser?.email?.isNotEmpty ?? false)
-                    ? FirebaseAuth.instance.currentUser!.email![0].toUpperCase()
-                    : '?',
-                style: TextStyle(
-                  fontSize: screenWidth * 0.045,
-                  color: isDarkTheme ? Colors.white : Colors.black,
+          behavior: HitTestBehavior.translucent,
+          child: Container(
+            width: 50,
+            height: 50,
+            alignment: Alignment.center,
+            margin: const EdgeInsets.only(left: 5, bottom: 5),
+            child: Transform.translate(
+              offset: Offset(-screenWidth * 0.02, screenHeight * 0.0015),
+              child: CircleAvatar(
+                radius: screenWidth * 0.05,
+                backgroundColor: isDarkTheme ? Colors.grey[800] : Colors.grey[300],
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 250),
+                  transitionBuilder: (Widget child, Animation<double> animation) {
+                    return FadeTransition(
+                      opacity: animation,
+                      child: child,
+                    );
+                  },
+                  // Key’i metin değerine göre ayarlıyoruz:
+                  child: Text(
+                    _userData != null &&
+                        _userData!['username'] != null &&
+                        (_userData!['username'] as String).isNotEmpty
+                        ? (_userData!['username'] as String)[0].toUpperCase()
+                        : '?',
+                    key: ValueKey<String>(
+                      _userData != null &&
+                          _userData!['username'] != null &&
+                          (_userData!['username'] as String).isNotEmpty
+                          ? (_userData!['username'] as String)[0].toUpperCase()
+                          : '?',
+                    ),
+                    style: TextStyle(
+                      fontSize: screenWidth * 0.045,
+                      color: isDarkTheme ? Colors.white : Colors.black,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -3148,6 +3313,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
           clipBehavior: Clip.none,
           alignment: Alignment.topLeft,
           children: [
+            // Arka plan kredi barı
             Positioned(
               top: screenHeight * 0.0129,
               left: screenWidth * 0.05,
@@ -3159,9 +3325,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
                   vertical: screenHeight * 0.005,
                 ),
                 decoration: BoxDecoration(
-                  color: isDarkTheme
-                      ? const Color(0xFF181818)
-                      : Colors.grey[300],
+                  color: isDarkTheme ? const Color(0xFF181818) : Colors.grey[300],
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: isDarkTheme ? Colors.white : Colors.black,
@@ -3174,9 +3338,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
                     Container(
                       padding: EdgeInsets.all(screenWidth * 0.01),
                       decoration: BoxDecoration(
-                        color: isDarkTheme
-                            ? const Color(0xFF181818)
-                            : Colors.grey[300],
+                        color: isDarkTheme ? const Color(0xFF181818) : Colors.grey[300],
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: SvgPicture.asset(
@@ -3190,28 +3352,38 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
                 ),
               ),
             ),
-            // -------------------------------
+            // Hexagon buton (tasarımınızda olduğu gibi)
             Positioned(
               top: screenHeight * 0.0129,
               left: screenWidth * 0.02,
               child: _buildHexagonButton(isDarkTheme),
             ),
+            // Kredi miktarını gösteren AnimatedSwitcher
             Positioned(
               top: screenHeight * 0.0129,
               left: screenWidth * 0.115,
-              // Our “invisible square” is 0.12 wide, matching the bar’s height
               child: Container(
                 width: screenWidth * 0.12,
                 height: screenHeight * 0.045,
-                // center horizontally + FittedBox ensures variable-length text
                 child: Center(
-                  child: FittedBox(
-                    child: Text(
-                      '$totalCredits',
-                      style: TextStyle(
-                        fontSize: screenWidth * 0.04,
-                        fontWeight: FontWeight.bold,
-                        color: isDarkTheme ? Colors.white : Colors.black,
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 250),
+                    transitionBuilder: (Widget child, Animation<double> animation) {
+                      return FadeTransition(
+                        opacity: animation,
+                        child: child,
+                      );
+                    },
+                    // totalCredits değeri değiştiğinde key de değişsin diye ValueKey kullanıyoruz
+                    child: FittedBox(
+                      key: ValueKey<int>(totalCredits),
+                      child: Text(
+                        '$totalCredits',
+                        style: TextStyle(
+                          fontSize: screenWidth * 0.04,
+                          fontWeight: FontWeight.bold,
+                          color: isDarkTheme ? Colors.white : Colors.black,
+                        ),
                       ),
                     ),
                   ),

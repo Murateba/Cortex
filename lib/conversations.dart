@@ -307,10 +307,10 @@ class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMi
       return;
     }
 
-    // 1) Hangi index'te silineceğini bul
+    // Silinecek sohbetin indeksini bulalım
     int removeIndex = _conversationIDsOrder.indexOf(conversationID);
     if (removeIndex < 0) {
-      // Listede bulamadıysak, yine de prefs temizleyelim
+      // Listede bulunamadıysa, yine de prefs temizleyelim.
       List<String> conversations = prefs.getStringList('conversations') ?? [];
       conversations.removeWhere((conv) => conv.startsWith('$conversationID|'));
       await prefs.setStringList('conversations', conversations);
@@ -319,95 +319,104 @@ class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMi
       return;
     }
 
-    // 2) Silinecek ConversationManager'ı sakla
-    final ConversationManager removedManager = manager;
+    // Silinecek yöneticiyi kaydedelim.
+    final removedManager = manager;
 
-    // 3) setState içinde model'den item'ı çıkar ve AnimatedList'e removeItem talimatı ver
-    setState(() {
-      // Önce asıl liste verimizden çıkaralım
-      _conversationIDsOrder.removeAt(removeIndex);
-      _conversationManagers.remove(conversationID);
+    // Listedeki öğe sayısına göre farklı davranalım:
+    final bool isLastItem = _conversationIDsOrder.length == 1;
 
-      // Sonra AnimatedList'e animasyonlu kaldırma komutu
-      _allChatsListKey.currentState?.removeItem(
-        removeIndex,
-            (context, animation) {
-          final curvedAnimation = CurvedAnimation(
-            parent: animation,
-            curve: Curves.easeInOut,
-          );
-          return AnimatedBuilder(
-            animation: curvedAnimation,
-            builder: (context, child) {
-              return SizeTransition(
-                sizeFactor: curvedAnimation,
-                child: FadeTransition(
-                  opacity: curvedAnimation,
-                  child: child,
-                ),
-              );
-            },
-            child: ConversationTile(
-              key: ValueKey(conversationID),
-              manager: removedManager,
-              hideWhenUnstarred: false,
-              onDelete: () {},
-              onEdit: (_) {},
-              onToggleStar: () {},
-            ),
-          );
-        },
-        duration: const Duration(milliseconds: 300),
-      );
-    });
+    if (!isLastItem) {
+      // 1. Durum: Birden fazla sohbet varsa
+      // Veri modelinden (liste) hemen kaldırıyoruz:
+      setState(() {
+        _conversationIDsOrder.removeAt(removeIndex);
+        _conversationManagers.remove(conversationID);
+      });
+    }
 
-    // 4) SharedPreferences’dan da temizleyelim
+    // 2) AnimatedList'te animasyonlu kaldırma işlemini başlatıyoruz.
+    _allChatsListKey.currentState?.removeItem(
+      removeIndex,
+          (context, animation) {
+        final curvedAnimation = CurvedAnimation(
+          parent: animation,
+          curve: Curves.easeInOut,
+        );
+        return AnimatedBuilder(
+          animation: curvedAnimation,
+          builder: (context, child) {
+            return SizeTransition(
+              sizeFactor: curvedAnimation,
+              child: FadeTransition(
+                opacity: curvedAnimation,
+                child: child,
+              ),
+            );
+          },
+          child: ConversationTile(
+            key: ValueKey(conversationID),
+            manager: removedManager,
+            hideWhenUnstarred: false,
+            onDelete: () {},
+            onEdit: (_) {},
+            onToggleStar: () {},
+          ),
+        );
+      },
+      duration: const Duration(milliseconds: 300),
+    );
+
+    if (isLastItem) {
+      // 3) Eğer listede sadece tek öğe varsa, animasyonun tamamlanması için bekleyip sonra veri modelini güncelliyoruz.
+      await Future.delayed(const Duration(milliseconds: 300));
+      setState(() {
+        _conversationIDsOrder.removeAt(removeIndex);
+        _conversationManagers.remove(conversationID);
+      });
+    }
+
+    // 4) SharedPreferences’dan da temizleme işlemlerini yapalım:
     List<String> conversations = prefs.getStringList('conversations') ?? [];
     conversations.removeWhere((conv) => conv.startsWith('$conversationID|'));
     await prefs.setStringList('conversations', conversations);
     await prefs.remove('is_starred_$conversationID');
     await prefs.remove(conversationID);
 
-    // 5) Eğer bu sohbet şu an ChatScreen'de aktifse sıfırla
+    // 5) Eğer bu sohbet ChatScreen'de aktifse, sıfırlayalım.
     if (mainScreenKey.currentState?.chatScreenKey.currentState?.conversationID == conversationID) {
       mainScreenKey.currentState?.chatScreenKey.currentState?.resetConversation();
     }
 
-    // 6) Sunucu taraflı sohbetlerde güncelleme yap:
-    //    • Eğer model sunucu taraflı ise, internet varsa Firestore'da decrement yap,
-    //      internet yoksa pending decrement (conversationsMinus) kaydı ekle.
-    //    • Sunucu taraflı olmayan sohbetlerde hiçbir güncelleme yapma.
+    // 6) Sunucu taraflı sohbetlerde Firestore güncellemesi:
     if (removedManager.isServerSide) {
-      if (hasInternetConnection) {
-        final User? user = FirebaseAuth.instance.currentUser;
-        if (user != null) {
-          try {
+      final User? user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        try {
+          if (hasInternetConnection) {
             await FirebaseFirestore.instance
                 .collection('users')
                 .doc(user.uid)
                 .update({'conversations': FieldValue.increment(-1)});
-          } catch (e) {
-            print("Error decrementing conversations count in Firestore: $e");
-            _conversationsMinus = prefs.getInt('conversationsMinus') ?? 0;
-            _conversationsMinus += 1;
-            await prefs.setInt('conversationsMinus', _conversationsMinus);
+          } else {
+            int convMinus = prefs.getInt('conversationsMinus') ?? 0;
+            convMinus += 1;
+            await prefs.setInt('conversationsMinus', convMinus);
           }
+        } catch (e) {
+          debugPrint("Error decrementing conversations count in Firestore: $e");
+          int convMinus = prefs.getInt('conversationsMinus') ?? 0;
+          convMinus += 1;
+          await prefs.setInt('conversationsMinus', convMinus);
         }
-      } else {
-        // Çevrimdışı durumdaysa ve sohbet sunucu taraflı ise pending decrement kaydını ekle
-        _conversationsMinus = prefs.getInt('conversationsMinus') ?? 0;
-        _conversationsMinus += 1;
-        await prefs.setInt('conversationsMinus', _conversationsMinus);
       }
     }
 
-    // 7) Bildirim göster
+    // 7) Bildirimi gösterelim.
     _notificationService.showNotification(
       message: AppLocalizations.of(context)!.conversationDeleted,
       isSuccess: true,
     );
   }
-
 
   Map<String, dynamic> _getModelDataFromId(String modelId) {
     List<Map<String, dynamic>> allModels = ModelData.models(context);
@@ -517,28 +526,31 @@ class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMi
     );
   }
 
-  /// 1. Güncellenmiş _buildConversationList fonksiyonu:
   Widget _buildConversationList({required bool showStarredOnly}) {
     final isDarkTheme = Provider.of<ThemeProvider>(context).isDarkTheme;
     final localizations = AppLocalizations.of(context)!;
 
-    List<String> filteredIDs;
-    if (showStarredOnly) {
-      filteredIDs = _conversationIDsOrder
-          .where((id) => _conversationManagers[id]?.isStarred == true)
-          .toList();
-    } else {
-      filteredIDs = List<String>.from(_conversationIDsOrder);
-    }
+    // Filtreleme: Yıldızlı sohbetler veya tüm sohbetler
+    List<String> filteredIDs = showStarredOnly
+        ? _conversationIDsOrder
+        .where((id) => _conversationManagers[id]?.isStarred == true)
+        .toList()
+        : List<String>.from(_conversationIDsOrder);
 
-    if (_isLoading) {
-      return _SkeletonChatList();
-    }
-
-    if (filteredIDs.isEmpty) {
-      final screenWidth = MediaQuery.of(context).size.width;
-      final screenHeight = MediaQuery.of(context).size.height;
-      return TweenAnimationBuilder<double>(
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 200),
+      transitionBuilder: (child, animation) {
+        return FadeTransition(
+          opacity: animation,
+          child: child,
+        );
+      },
+      // _isLoading durumuna göre farklı widget'lar döndürüyoruz:
+      child: _isLoading
+          ? _SkeletonChatList(key: const ValueKey('skeleton'))
+          : (filteredIDs.isEmpty
+          ? TweenAnimationBuilder<double>(
+        key: const ValueKey('empty'),
         tween: Tween<double>(begin: 0, end: 1),
         duration: const Duration(milliseconds: 300),
         builder: (context, opacity, child) {
@@ -550,10 +562,10 @@ class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMi
         child: Align(
           alignment: Alignment.center,
           child: Padding(
-            padding: EdgeInsets.all(screenWidth * 0.04),
+            padding:
+            EdgeInsets.all(MediaQuery.of(context).size.width * 0.04),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Text(
                   showStarredOnly
@@ -562,21 +574,26 @@ class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMi
                   style: TextStyle(
                     fontFamily: 'Roboto',
                     color: isDarkTheme ? Colors.white : Colors.black,
-                    fontSize: screenWidth * 0.08,
+                    fontSize: MediaQuery.of(context).size.width * 0.08,
                     fontWeight: FontWeight.bold,
                   ),
+                  textAlign: TextAlign.center,
                 ),
-                SizedBox(height: screenHeight * 0.005),
+                SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.005),
                 Text(
                   showStarredOnly
                       ? localizations.noStarredChatsMessage
                       : localizations.noConversationsMessage,
                   style: TextStyle(
-                    color: isDarkTheme ? Colors.grey[400] : Colors.grey[700],
-                    fontSize: screenWidth * 0.04,
+                    color:
+                    isDarkTheme ? Colors.grey[400] : Colors.grey[700],
+                    fontSize: MediaQuery.of(context).size.width * 0.04,
                   ),
+                  textAlign: TextAlign.center,
                 ),
-                SizedBox(height: screenHeight * 0.01),
+                SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.01),
                 ElevatedButton(
                   onPressed: () {
                     if (showStarredOnly) {
@@ -584,16 +601,21 @@ class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMi
                     } else {
                       mainScreenKey.currentState?.onItemTapped(0);
                     }
-                    ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                    ScaffoldMessenger.of(context)
+                        .hideCurrentSnackBar();
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: isDarkTheme ? Colors.white : Colors.black,
+                    backgroundColor:
+                    isDarkTheme ? Colors.white : Colors.black,
                     padding: EdgeInsets.symmetric(
-                      horizontal: screenWidth * 0.08,
-                      vertical: screenHeight * 0.015,
+                      horizontal:
+                      MediaQuery.of(context).size.width * 0.08,
+                      vertical:
+                      MediaQuery.of(context).size.height * 0.015,
                     ),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(screenWidth * 0.02),
+                      borderRadius: BorderRadius.circular(
+                          MediaQuery.of(context).size.width * 0.02),
                     ),
                   ),
                   child: Text(
@@ -602,7 +624,8 @@ class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMi
                         : localizations.startChat,
                     style: TextStyle(
                       color: isDarkTheme ? Colors.black : Colors.white,
-                      fontSize: screenWidth * 0.04,
+                      fontSize:
+                      MediaQuery.of(context).size.width * 0.04,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -611,28 +634,27 @@ class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMi
             ),
           ),
         ),
-      );
-    }
-
-    if (showStarredOnly) {
-      return ListView.builder(
+      )
+          : (showStarredOnly
+          ? ListView.builder(
         key: const ValueKey('starredList'),
         itemCount: filteredIDs.length,
         itemBuilder: (context, index) {
           final convID = filteredIDs[index];
           return _buildConversationTile(convID, hideWhenUnstarred: true);
         },
-      );
-    } else {
-      return AnimatedList(
-        key: _allChatsListKey,
+      )
+          : AnimatedList(
+        key: _allChatsListKey, // GlobalKey kullanılıyor!
         initialItemCount: filteredIDs.length,
         itemBuilder: (context, index, animation) {
           final convID = filteredIDs[index];
           return _buildAnimatedListItem(convID, animation);
         },
-      );
-    }
+      )
+      )
+      ),
+    );
   }
 
   @override
@@ -762,7 +784,7 @@ class ConversationTile extends StatefulWidget {
 }
 
 class _ConversationTileState extends State<ConversationTile>
-    with SingleTickerProviderStateMixin {
+    with TickerProviderStateMixin {
   final GlobalKey _threeDotKey = GlobalKey();
   OverlayEntry? _overlayEntry;
   late AnimationController _animationController;
@@ -775,6 +797,11 @@ class _ConversationTileState extends State<ConversationTile>
 
   bool _isDialogOpen = false;
 
+  String _displayedTitle = "";
+  String _oldTitle = "";
+  late AnimationController _fadeOutController;
+  late AnimationController _fadeInController;
+
   @override
   void initState() {
     super.initState();
@@ -782,11 +809,37 @@ class _ConversationTileState extends State<ConversationTile>
       duration: const Duration(milliseconds: 150),
       vsync: this,
     );
-
+    _displayedTitle = widget.manager.conversationTitle;
+    _fadeOutController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    )..addListener(() {
+      setState(() {});
+    });
+    _fadeInController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 500),
+    )..addListener(() {
+      setState(() {});
+    });
     widget.manager.addListener(_onManagerChanged);
   }
 
   void _onManagerChanged() {
+    if (widget.manager.conversationTitle != _displayedTitle) {
+      // Herhangi bir animasyon devam ediyorsa resetleyelim:
+      _fadeOutController.reset();
+      _fadeInController.reset();
+      _oldTitle = _displayedTitle;
+      // Eski başlığı fade-out ile soldan sağa (aslında metnin sonundan başa doğru) kaybettiriyoruz:
+      _fadeOutController.forward(from: 0.0).whenComplete(() {
+        setState(() {
+          _displayedTitle = widget.manager.conversationTitle;
+        });
+        // Yeni başlık, soldan sağa doğru fade-in ile gelsin:
+        _fadeInController.forward(from: 0.0);
+      });
+    }
     setState(() {});
   }
 
@@ -801,6 +854,8 @@ class _ConversationTileState extends State<ConversationTile>
       _overlayEntry?.remove();
       _overlayEntry = null;
     }
+    _fadeOutController.dispose();
+    _fadeInController.dispose();
     widget.manager.removeListener(_onManagerChanged);
     _animationController.dispose();
     super.dispose();
@@ -826,6 +881,129 @@ class _ConversationTileState extends State<ConversationTile>
         }
       }
     }
+  }
+
+  /// Dinamik değerlerle ve sabit satır yüksekliğiyle animasyonlu başlık oluşturur.
+  Widget _buildAnimatedTitle(String text, AnimationController controller, bool reverse) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    // Dinamik değerler: font boyutu ve satır yüksekliği
+    final double fontSize = screenWidth * 0.045;
+    final double lineHeight = 1.2;
+    // Sabit yükseklik: fontSize * lineHeight
+    final double fixedHeight = fontSize * lineHeight;
+    final isDarkTheme = Provider.of<ThemeProvider>(context, listen: false).isDarkTheme;
+
+    int n = text.length;
+    // Karakter sayısına göre delay değeri:
+    double delayNormalized = n > 8 ? 0.8 / (n - 1) : 0.05;
+    List<InlineSpan> spans = [];
+    for (int i = 0; i < n; i++) {
+      double start, end;
+      if (reverse) {
+        // Fade-out: metnin son karakterinden başa doğru
+        int j = n - 1 - i;
+        start = j * delayNormalized;
+        end = start + 0.2; // 100ms/500ms = 0.2 normalized
+      } else {
+        // Fade-in: metnin başından sona doğru
+        start = i * delayNormalized;
+        end = start + 0.2;
+      }
+      double t = controller.value;
+      double opacity;
+      if (!reverse) {
+        if (t < start)
+          opacity = 0.0;
+        else if (t > end)
+          opacity = 1.0;
+        else
+          opacity = (t - start) / (end - start);
+      } else {
+        if (t < start)
+          opacity = 1.0;
+        else if (t > end)
+          opacity = 0.0;
+        else
+          opacity = 1.0 - (t - start) / (end - start);
+      }
+      spans.add(TextSpan(
+        text: text[i],
+        style: GoogleFonts.poppins(
+          fontSize: fontSize,
+          fontWeight: FontWeight.w500,
+          height: lineHeight,
+          color: (isDarkTheme ? Colors.white : Colors.black).withOpacity(opacity),
+        ),
+      ));
+    }
+
+    // Baseline metin; görünmez olmasına rağmen alanı tutar:
+    final baseline = Text(
+      text,
+      style: GoogleFonts.poppins(
+        fontSize: fontSize,
+        fontWeight: FontWeight.w500,
+        height: lineHeight,
+        color: (isDarkTheme ? Colors.white : Colors.black),
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      textHeightBehavior: const TextHeightBehavior(
+        applyHeightToFirstAscent: false,
+        applyHeightToLastDescent: false,
+      ),
+    );
+
+    return SizedBox(
+      height: fixedHeight,
+      child: Stack(
+        alignment: Alignment.topLeft, // Üst sol hizalama
+        children: [
+          // Alanı sabit tutmak için görünmez baseline
+          Opacity(
+            opacity: 0.0,
+            child: baseline,
+          ),
+          RichText(
+            text: TextSpan(children: spans),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            textHeightBehavior: const TextHeightBehavior(
+              applyHeightToFirstAscent: false,
+              applyHeightToLastDescent: false,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Hangi animasyonun çalıştığına göre uygun widget’ı döndürür.
+  Widget _buildAnimatedTitleWidget() {
+    if (_fadeOutController.isAnimating) {
+      return _buildAnimatedTitle(_oldTitle, _fadeOutController, true);
+    }
+    if (_fadeInController.isAnimating) {
+      return _buildAnimatedTitle(_displayedTitle, _fadeInController, false);
+    }
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isDarkTheme = Provider.of<ThemeProvider>(context, listen: false).isDarkTheme;
+    // Tamamlanmış animasyon durumunda düz metin (sabit stil ve satır yüksekliği)
+    return Text(
+      _displayedTitle,
+      style: GoogleFonts.poppins(
+        fontSize: screenWidth * 0.045,
+        fontWeight: FontWeight.w500,
+        height: 1.2,
+        color: isDarkTheme ? Colors.white : Colors.black,
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      textHeightBehavior: const TextHeightBehavior(
+        applyHeightToFirstAscent: false,
+        applyHeightToLastDescent: false,
+      ),
+    );
   }
 
   void _showActionPanel() {
@@ -1169,33 +1347,26 @@ class _ConversationTileState extends State<ConversationTile>
     mainScreenKey.currentState?.openConversation(widget.manager);
   }
 
+
   @override
   Widget build(BuildContext context) {
     if (widget.hideWhenUnstarred && !widget.manager.isStarred) {
       return const SizedBox.shrink();
     }
-
     final isDarkTheme = Provider.of<ThemeProvider>(context).isDarkTheme;
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
-
-    // A fallback background color
     Color backgroundColor = isDarkTheme ? Colors.grey[800]! : Colors.grey[300]!;
-
-    // If model image is .png, use a slightly different background color
     if (widget.manager.modelImagePath.isNotEmpty &&
         widget.manager.modelImagePath.endsWith('.png')) {
       backgroundColor = isDarkTheme
           ? const Color(0xFF121212)
           : const Color(0xFFEDEDED);
     }
-
-    // We'll base all spacing on screenWidth/screenHeight
     final double horizontalMargin = screenWidth * 0.03;
     final double verticalMargin = screenHeight * 0.01;
     final double tilePadding = screenWidth * 0.04;
     final double imageSize = screenWidth * 0.15;
-
     return GestureDetector(
       onTapDown: (_) {
         _isLongPress = false;
@@ -1264,40 +1435,34 @@ class _ConversationTileState extends State<ConversationTile>
                   )
                       : null,
                 ),
-                SizedBox(width: screenWidth * 0.03),
+                SizedBox(width: screenWidth * 0.02),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Title + Date
                       Row(
                         children: [
                           Expanded(
-                            child: FittedBox(
-                              alignment: Alignment.centerLeft,
-                              fit: BoxFit.scaleDown,
-                              child: Text(
-                                widget.manager.conversationTitle,
-                                style: GoogleFonts.poppins(
-                                  fontSize: screenWidth * 0.045,
-                                  fontWeight: FontWeight.w500,
-                                  color: isDarkTheme ? Colors.white : Colors.black,
-                                ),
-                                maxLines: 1,
-                              ),
+                            child: Baseline(
+                              baseline: screenWidth * 0.045 * 0.8, // veya uygun gördüğünüz sabit bir değer
+                              baselineType: TextBaseline.alphabetic,
+                              child: _buildAnimatedTitleWidget(),
                             ),
                           ),
                           SizedBox(width: screenWidth * 0.02),
-                          Text(
-                            _formatDate(widget.manager.lastMessageDate),
-                            style: TextStyle(
-                              color: isDarkTheme ? Colors.grey : Colors.grey[600],
-                              fontSize: screenWidth * 0.03,
+                          Baseline(
+                            baseline: screenWidth * 0.045 * 0.8, // Aynı baz çizgi değeri
+                            baselineType: TextBaseline.alphabetic,
+                            child: Text(
+                              _formatDate(widget.manager.lastMessageDate),
+                              style: TextStyle(
+                                color: isDarkTheme ? Colors.grey : Colors.grey[600],
+                                fontSize: screenWidth * 0.03,
+                              ),
                             ),
                           ),
                         ],
                       ),
-                      // Model Title
                       Text(
                         widget.manager.modelTitle,
                         style: GoogleFonts.poppins(
@@ -1307,8 +1472,7 @@ class _ConversationTileState extends State<ConversationTile>
                         ),
                         overflow: TextOverflow.ellipsis,
                       ),
-                      SizedBox(height: screenHeight * 0.005),
-                      // Last Message Snippet + 3-Dot
+                      SizedBox(height: screenHeight * 0.002),
                       Row(
                         children: [
                           Expanded(

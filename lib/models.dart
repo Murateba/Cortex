@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
+import 'package:flutter_svg/svg.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import 'chart.dart';
@@ -1489,7 +1490,7 @@ class _ModelsScreenState extends State<ModelsScreen>
         int expectedBytes = expectedSizeMB * 1024 * 1024;
         int actualBytes = await file.length();
         if (expectedBytes > 0) {
-          isFileComplete = actualBytes >= (expectedBytes * 0.9);
+          isFileComplete = actualBytes >= (expectedBytes * 0.98);
         } else {
           isFileComplete = actualBytes > 0;
         }
@@ -1759,7 +1760,6 @@ class _ModelsScreenState extends State<ModelsScreen>
     );
   }
 
-  /// İndirmeyi iptal et
   void _cancelDownload(String id) async {
     final prefs = await SharedPreferences.getInstance();
     String? taskId = _downloadTaskIds[id];
@@ -1775,6 +1775,14 @@ class _ModelsScreenState extends State<ModelsScreen>
       _downloadTaskIds.remove(id);
       prefs.remove('download_task_id_$id');
     }
+
+    // İptal işleminde kısmi indirilen dosya varsa siliniyor.
+    final filePath = _getFilePathById(id);
+    final file = File(filePath);
+    if (await file.exists()) {
+      await file.delete();
+    }
+
     prefs.setBool('is_downloading_$id', false);
   }
 
@@ -2449,43 +2457,111 @@ class _ModelsScreenState extends State<ModelsScreen>
         backgroundColor: isDarkTheme ? const Color(0xFF090909) : Colors.white,
         elevation: 0,
         actions: [
-          Transform.translate(
-            offset: Offset(-screenWidth * 0.02, 0),
-            child: ElevatedButton(
-              onPressed: _onAddButtonPressed,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: isDarkTheme ? Colors.white : Colors.black,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(screenWidth * 0.045),
-                ),
-                padding: EdgeInsets.symmetric(
-                  horizontal: screenWidth * 0.03,
-                  vertical: screenWidth * 0.015,
-                ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
+          Padding(
+            padding: EdgeInsets.only(
+              top: MediaQuery.of(context).size.height * 0.005,
+            ),
+            child: SizedBox(
+              width: MediaQuery.of(context).size.width * 0.37,
+              height: MediaQuery.of(context).size.height * 0.1,
+              child: Stack(
+                clipBehavior: Clip.none,
+                alignment: Alignment.topLeft,
                 children: [
-                  Text(
-                    localizations.addModel,
-                    style: TextStyle(
-                      color: isDarkTheme ? Colors.black : Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: screenWidth * 0.03,
+                  // Sol konteyner
+                  Positioned(
+                    top: MediaQuery.of(context).size.height * 0.0129,
+                    left: MediaQuery.of(context).size.width * 0.082,
+                    child: Container(
+                      width: MediaQuery.of(context).size.width * 0.26,
+                      height: MediaQuery.of(context).size.height * 0.045,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: MediaQuery.of(context).size.width * 0.016,
+                        vertical: MediaQuery.of(context).size.height * 0.005,
+                      ),
+                      decoration: BoxDecoration(
+                        color: isDarkTheme
+                            ? const Color(0xFF304efc)
+                            : const Color(0xFF2974ff),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Stack(
+                        children: [
+                          // Align içerisindeki Container (varsa) önce ekleniyor
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: Container(
+                              padding: EdgeInsets.all(
+                                MediaQuery.of(context).size.width * 0.01,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isDarkTheme
+                                    ? const Color(0xFF304efc)
+                                    : const Color(0xFF2974ff),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                            ),
+                          ),
+                          Positioned(
+                            top: MediaQuery.of(context).size.width * 0.012,
+                            right: MediaQuery.of(context).size.width * 0.094,
+                            child: Text(
+                              localizations.addModel,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize:
+                                MediaQuery.of(context).size.width * 0.036,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                  SizedBox(width: screenWidth * 0.02),
-                  Container(
-                    width: screenWidth * 0.035,
-                    height: screenWidth * 0.035,
-                    decoration: BoxDecoration(
-                      color: isDarkTheme ? Colors.black : Colors.white,
-                      shape: BoxShape.circle,
+                  // Sağdaki yuvarlak buton
+                  Positioned(
+                    top: MediaQuery.of(context).size.height * 0.0129,
+                    left: MediaQuery.of(context).size.width * 0.25,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: _showComingSoonMessage,
+                        borderRadius: BorderRadius.circular(100),
+                        child: Container(
+                          width: MediaQuery.of(context).size.width * 0.1,
+                          height: MediaQuery.of(context).size.height * 0.045,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: isDarkTheme
+                                ? const Color(0xFF0026ff)
+                                : const Color(0xFF005aff),
+                          ),
+                          padding: EdgeInsets.all(
+                            MediaQuery.of(context).size.width * 0.026,
+                          ),
+                          child: SvgPicture.asset(
+                            'assets/plus.svg',
+                            color: Colors.white,
+                            width: MediaQuery.of(context).size.width * 0.02,
+                            height: MediaQuery.of(context).size.width * 0.02,
+                          ),
+                        ),
+                      ),
                     ),
-                    child: Icon(
-                      Icons.add,
-                      color: isDarkTheme ? Colors.white : Colors.black,
-                      size: screenWidth * 0.03,
+                  ),
+                  Positioned(
+                    top: 0,
+                    bottom: 0,
+                    left: MediaQuery.of(context).size.width * 0.07,
+                    right: 0,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: _showComingSoonMessage,
+                        splashColor: Colors.transparent,
+                        highlightColor: Colors.transparent,
+                      ),
                     ),
                   ),
                 ],
@@ -2507,6 +2583,17 @@ class _ModelsScreenState extends State<ModelsScreen>
               : _buildRealContent(screenWidth, screenHeight),
         ),
       ),
+    );
+  }
+
+  void _showComingSoonMessage() {
+    final notificationService =
+    Provider.of<NotificationService>(context, listen: false);
+
+    notificationService.showNotification(
+      message: AppLocalizations.of(context)!.comingSoon,
+      fontSize: 0.038,
+      duration: Duration(seconds: 1),
     );
   }
 }

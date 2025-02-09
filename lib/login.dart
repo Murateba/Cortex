@@ -456,8 +456,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     final appLocalizations = AppLocalizations.of(context)!;
     final isDarkTheme = Provider.of<ThemeProvider>(context).isDarkTheme;
 
-    // Ekran boyutlarını alıyoruz
-    final deviceWidth = MediaQuery.of(context).size.width;
     final deviceHeight = MediaQuery.of(context).size.height;
 
     // LOGIN FORM
@@ -466,12 +464,18 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Text(
-            appLocalizations.loginToYourAccount,
-            style: TextStyle(
-              fontSize: 42,
-              fontWeight: FontWeight.bold,
-              color: Theme.of(context).textTheme.titleLarge?.color,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              appLocalizations.loginToYourAccount,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 42,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).textTheme.titleLarge?.color,
+              ),
             ),
           ),
           SizedBox(height: deviceHeight * 0.05), // Dinamik (önceden 40)
@@ -646,12 +650,18 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          Text(
-            appLocalizations.createYourAccount,
-            style: TextStyle(
-              fontSize: 42,
-              fontWeight: FontWeight.bold,
-              color: Theme.of(context).textTheme.titleLarge?.color,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              appLocalizations.createYourAccount,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 42,
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).textTheme.titleLarge?.color,
+              ),
             ),
           ),
           SizedBox(height: deviceHeight * 0.05), // Dinamik (önceden 40)

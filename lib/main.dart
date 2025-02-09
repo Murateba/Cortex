@@ -1,4 +1,5 @@
 // main.dart
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -7,6 +8,7 @@ import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'chat.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
@@ -255,22 +257,43 @@ class ChatApp extends StatelessWidget {
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 
+  /// Firebase oturum kalıcılığı sayesinde eğer kullanıcı oturum açmışsa,
+  /// SharedPreferences kontrolüne gerek kalmadan true döndür.
   Future<bool> _checkRememberMe() async {
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      // Firebase, oturumu cihazda sakladığı için direkt true dönebiliriz.
+      return true;
+    }
+    // Eğer Firebase'de oturum bulunmuyorsa, eskiden kullanılan SharedPreferences kontrolünü yapalım.
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     bool rememberMe = prefs.getBool('remember_me') ?? false;
-    User? user = FirebaseAuth.instance.currentUser;
-    return rememberMe && user != null;
+    return rememberMe;
   }
 
   Future<Widget> _decideScreen() async {
-    // 1) Önce "remember me" ve FirebaseAuth'dan oturum açmış mı diye kontrol edelim.
+    // İnternet bağlantısını kontrol et
+    bool isConnected = await InternetConnection().hasInternetAccess;
+
+    // Eğer internet yoksa, sadece "remember me" kontrolü yapalım
+    if (!isConnected) {
+      bool hasRemember = await _checkRememberMe();
+      if (hasRemember) {
+        // İnternet olmadığı için doğrulama sorgusu yapmadan direkt ana ekrana (chatscreen) yönlendir
+        return mainScreen;
+      } else {
+        return const LoginScreen();
+      }
+    }
+
+    // İnternet varsa, mevcut akışa devam edelim.
     bool hasRememberAndUser = await _checkRememberMe();
     User? user = FirebaseAuth.instance.currentUser;
     if (!hasRememberAndUser || user == null) {
       return const LoginScreen();
     }
 
-    // 2) Firestore'da kullanıcı belgesinin var olup olmadığını kontrol edelim.
+    // Firestore'da kullanıcı belgesinin var olup olmadığını kontrol et
     try {
       final userDoc = await FirebaseFirestore.instance
           .collection('users')
@@ -278,7 +301,6 @@ class AuthWrapper extends StatelessWidget {
           .get();
 
       if (!userDoc.exists) {
-        // Eğer kullanıcı belgesi bulunmuyorsa, direkt login ekranına yönlendir.
         return const LoginScreen();
       }
     } catch (e) {
@@ -286,7 +308,7 @@ class AuthWrapper extends StatelessWidget {
       return const LoginScreen();
     }
 
-    // 3) Kullanıcı bilgisini yenileyelim
+    // Kullanıcı bilgilerini yenile
     try {
       await user.reload();
     } catch (e) {
@@ -294,7 +316,7 @@ class AuthWrapper extends StatelessWidget {
       return mainScreen;
     }
 
-    // 4) Email doğrulama kontrolü: Eğer e-mail doğrulanmışsa ana ekrana yönlendir.
+    // Email doğrulama kontrolü
     if (user.emailVerified) {
       return mainScreen;
     } else {

@@ -368,6 +368,7 @@ class _AccountScreenState extends State<AccountScreen>
         _notificationService.showNotification(
           message: appLocalizations.maxResendLimitReached,
           isSuccess: false,
+          bottomOffset: 0.02,
         );
         return;
       }
@@ -381,6 +382,7 @@ class _AccountScreenState extends State<AccountScreen>
       _notificationService.showNotification(
         message: appLocalizations.linkSent,
         isSuccess: true,
+        bottomOffset: 0.02,
       );
 
     } catch (e) {
@@ -388,6 +390,7 @@ class _AccountScreenState extends State<AccountScreen>
       _notificationService.showNotification(
         message: appLocalizations.authError,
         isSuccess: false,
+        bottomOffset: 0.02,
       );
     }
   }
@@ -459,6 +462,7 @@ class _AccountScreenState extends State<AccountScreen>
       );
       _notificationService.showNotification(
         message: appLocalizations.accountDeleted,
+        bottomOffset: 0.02,
         isSuccess: true,
       );
     }
@@ -505,17 +509,6 @@ class _AccountScreenState extends State<AccountScreen>
     final themeProvider =
     Provider.of<ThemeProvider>(context, listen: false);
     themeProvider.toggleTheme(isDark);
-  }
-
-  /// "Coming Soon" mesajı
-  void _showComingSoonMessage() {
-    final notificationService =
-    Provider.of<NotificationService>(context, listen: false);
-
-    notificationService.showNotification(
-      message: AppLocalizations.of(context)!.comingSoon,
-      bottomOffset: 0.02,
-    );
   }
 
   /// İnternet bağlantısı var mı?
@@ -1971,6 +1964,7 @@ class _AccountScreenState extends State<AccountScreen>
                                   _notificationService.showNotification(
                                     message: appLocalizations.allConversationsDeleted,
                                     isSuccess: true,
+                                    bottomOffset: 0.02,
                                   );
                                 },
                                 child: Text(appLocalizations.deleteAll),

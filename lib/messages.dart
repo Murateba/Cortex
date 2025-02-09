@@ -1,4 +1,4 @@
-// lib/messages.dart
+// messages.dart
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -476,11 +476,11 @@ class _AIMessageTileState extends State<AIMessageTile>
 }
 
 class SelectTextScreen extends StatefulWidget {
-  final String messageText;
+  final ValueNotifier<String> messageNotifier;
 
   const SelectTextScreen({
     Key? key,
-    required this.messageText,
+    required this.messageNotifier,
   }) : super(key: key);
 
   @override
@@ -495,11 +495,14 @@ class _SelectTextScreenState extends State<SelectTextScreen>
   /// The currently displayed text (original or stripped).
   late String _displayedText;
 
-  /// Controls the fade-out animation (200 ms).
+  /// The parsed spans for the currently displayed text.
+  late List<InlineSpan> _displayedSpans;
+
+  /// Controls the fade-out animation (100 ms).
   late AnimationController _fadeOutController;
   late Animation<double> _fadeOutAnimation;
 
-  /// Controls the fade-in animation (200 ms).
+  /// Controls the fade-in animation (100 ms).
   late AnimationController _fadeInController;
   late Animation<double> _fadeInAnimation;
 
@@ -509,43 +512,113 @@ class _SelectTextScreenState extends State<SelectTextScreen>
   /// ScrollController to manage scrolling.
   final ScrollController _scrollController = ScrollController();
 
+  // ----------- For new incoming token chunk animation -----------
+  late AnimationController _chunkFadeInController;
+  late Animation<double> _chunkFadeInAnimation;
+  String _animatingChunk = '';
+  bool _isChunkAnimating = false;
+  // ----------------------------------------------------------------
+
   @override
   void initState() {
     super.initState();
-    _displayedText = widget.messageText;
+    _displayedText = widget.messageNotifier.value;
+    final bool isDark = WidgetsBinding.instance.window.platformBrightness == Brightness.dark;
+    _displayedSpans = parseText(_displayedText, isDark);
 
-    // Initialize fade-out controller.
     _fadeOutController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 100),
     );
-    _fadeOutAnimation =
-        Tween<double>(begin: 1.0, end: 0.0).animate(_fadeOutController);
+    _fadeOutAnimation = Tween<double>(begin: 1.0, end: 0.0).animate(_fadeOutController);
 
-    // Initialize fade-in controller.
     _fadeInController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 100),
     );
-    _fadeInAnimation =
-        Tween<double>(begin: 0.0, end: 1.0).animate(_fadeInController);
+    _fadeInAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(_fadeInController);
+
+    _chunkFadeInController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _chunkFadeInAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(_chunkFadeInController);
+
+    // Güncellenmiş notifier listener:
+    widget.messageNotifier.addListener(() {
+      final newVal = widget.messageNotifier.value;
+      // Ekranda gösterilen metin + animasyon halinde eklenen chunk (varsa)
+      final currentCombined = _displayedText + (_isChunkAnimating ? _animatingChunk : '');
+      if (newVal != currentCombined) {
+        _handleIncomingTextChange(currentCombined, newVal);
+      }
+    });
   }
 
   @override
-  void dispose() {
-    _fadeOutController.dispose();
-    _fadeInController.dispose();
-    _scrollController.dispose(); // Dispose the controller
-    super.dispose();
+  void didUpdateWidget(covariant SelectTextScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.messageNotifier.value != oldWidget.messageNotifier.value) {
+      _handleIncomingTextChange(oldWidget.messageNotifier.value, widget.messageNotifier.value);
+    }
+  }
+
+  /// Processes the incoming text changes incrementally.
+  void _handleIncomingTextChange(String oldText, String newText) {
+    final bool isDarkTheme = Theme.of(context).brightness == Brightness.dark;
+    final localizations = AppLocalizations.of(context)!;
+
+    // If we are exiting the "thinking" state:
+    if (oldText == localizations.thinking && newText != localizations.thinking) {
+      oldText = '';
+    }
+
+    // If text has shortened (e.g. during regeneration), reset:
+    if (newText.length < oldText.length) {
+      setState(() {
+        _displayedText = newText;
+        _displayedSpans = parseText(_displayedText, isDarkTheme);
+        _animatingChunk = '';
+        _isChunkAnimating = false;
+        _chunkFadeInController.value = 1.0;
+      });
+      return;
+    }
+
+    // Get the new chunk:
+    String chunk = newText.substring(oldText.length);
+    if (_hideSpecial) {
+      chunk = _stripMarkup(chunk);
+    }
+    if (chunk.isEmpty) return;
+
+    if (_isChunkAnimating) {
+      // If animation is ongoing, append to the chunk.
+      setState(() {
+        _animatingChunk += chunk;
+      });
+    } else {
+      // Start new chunk animation:
+      _animatingChunk = chunk;
+      _isChunkAnimating = true;
+      _chunkFadeInController.reset();
+      _chunkFadeInController.forward().whenComplete(() {
+        setState(() {
+          _displayedText += _animatingChunk;
+          _displayedSpans = parseText(_displayedText, isDarkTheme);
+          _animatingChunk = '';
+          _isChunkAnimating = false;
+        });
+      });
+    }
   }
 
   /// Toggles the visibility of LaTeX and Markdown symbols with a 400ms animation.
   void _toggleSpecialVisibility() async {
     if (_isSwitchingText) return; // Prevent overlapping animations.
 
-    // Check if the user has scrolled away from the top
+    // If not at top, scroll up in 100 ms.
     if (_scrollController.hasClients && _scrollController.offset > 0) {
-      // Animate scrolling to the top over 100 milliseconds
       await _scrollController.animateTo(
         0.0,
         duration: const Duration(milliseconds: 100),
@@ -559,16 +632,18 @@ class _SelectTextScreenState extends State<SelectTextScreen>
     // Start fade-out.
     await _fadeOutController.forward();
 
-    // Toggle the visibility state and update displayed text.
+    // Toggle state and update _displayedText.
     setState(() {
       _hideSpecial = !_hideSpecial;
-      _displayedText =
-      _hideSpecial ? _stripMarkup(widget.messageText) : widget.messageText;
+      _displayedText = _hideSpecial
+          ? _stripMarkup(widget.messageNotifier.value)
+          : widget.messageNotifier.value;
       print('Toggled _hideSpecial to $_hideSpecial');
       print('Updated _displayedText: $_displayedText');
+      _displayedSpans = parseText(_displayedText, Theme.of(context).brightness == Brightness.dark);
     });
 
-    _fadeOutController.reset(); // Reset for future toggles.
+    _fadeOutController.reset();
 
     // Start fade-in.
     await _fadeInController.forward();
@@ -578,17 +653,13 @@ class _SelectTextScreenState extends State<SelectTextScreen>
     print('Completed fade-in animation');
   }
 
-  /// Copies the currently displayed text (original or stripped) to the clipboard.
+  /// Copies the currently displayed text to the clipboard.
   void _copyText(BuildContext context) {
-    // Decide which text to copy based on whether LaTeX/Markdown is hidden
     final textToCopy = _hideSpecial
-        ? _stripMarkup(widget.messageText)
-        : widget.messageText;
-
-    // Copy it to the clipboard
+        ? _stripMarkup(widget.messageNotifier.value)
+        : widget.messageNotifier.value;
     Clipboard.setData(ClipboardData(text: textToCopy));
 
-    // Show a toast / notification
     Provider.of<NotificationService>(context, listen: false).showNotification(
       message: AppLocalizations.of(context)!.messageCopied,
       isSuccess: true,
@@ -596,141 +667,57 @@ class _SelectTextScreenState extends State<SelectTextScreen>
     );
   }
 
-  /// Strips LaTeX and Markdown symbols from the text.
-  ///
-  /// - Specifically handles \frac{a}{b} by converting it to {a} / {b}.
-  /// - Removes other LaTeX commands but preserves their content.
-  /// - Preserves the content inside LaTeX and Markdown symbols.
-  /// - Preserves newline characters.
+  /// Strips LaTeX and Markdown symbols from [text].
   String _stripMarkup(String text) {
-    // 1. Remove block LaTeX: $$...$$
     text = text.replaceAllMapped(
-      RegExp(r'\$\$(.*?)\$\$', dotAll: true),
-          (m) => m.group(1) ?? '',
-    );
-
-    // 2. Remove inline LaTeX: $...$
+        RegExp(r'\$\$(.*?)\$\$', dotAll: true), (m) => m.group(1) ?? '');
     text = text.replaceAllMapped(
-      RegExp(r'\$(.*?)\$', dotAll: true),
-          (m) => m.group(1) ?? '',
-    );
-
-    // 3. Handle \frac{a}{b} specifically
+        RegExp(r'\$(.*?)\$', dotAll: true), (m) => m.group(1) ?? '');
     text = text.replaceAllMapped(
-      RegExp(r'\\frac\{([^{}]*)\}\{([^{}]*)\}'),
-          (m) => '{${m.group(1)}} / {${m.group(2)}}',
-    );
-
-    // 4. Remove other LaTeX environments: \begin{env}...\end{env}
+        RegExp(r'\\frac\{([^{}]*)\}\{([^{}]*)\}'), (m) => '{${m.group(1)}} / {${m.group(2)}}');
     text = text.replaceAllMapped(
-      RegExp(r'\\begin\{.*?\}([\s\S]*?)\\end\{.*?\}', dotAll: true),
-          (m) => m.group(1) ?? '',
-    );
-
-    // 5. Remove \(...\) and \[...\]
+        RegExp(r'\\begin\{.*?\}([\s\S]*?)\\end\{.*?\}', dotAll: true), (m) => m.group(1) ?? '');
     text = text.replaceAllMapped(
-      RegExp(r'\\\((.*?)\\\)', dotAll: true),
-          (m) => m.group(1) ?? '',
-    );
+        RegExp(r'\\\((.*?)\\\)', dotAll: true), (m) => m.group(1) ?? '');
     text = text.replaceAllMapped(
-      RegExp(r'\\\[(.*?)\\\]', dotAll: true),
-          (m) => m.group(1) ?? '',
-    );
-
-    // 6. Remove code blocks: ```...```
+        RegExp(r'\\\[(.*?)\\\]', dotAll: true), (m) => m.group(1) ?? '');
     text = text.replaceAllMapped(
-      RegExp(r'```([\s\S]*?)```', multiLine: true, dotAll: true),
-          (m) => m.group(1) ?? '',
-    );
-
-    // 7. Remove Markdown headings: # Heading
+        RegExp(r'```([\s\S]*?)```', multiLine: true, dotAll: true), (m) => m.group(1) ?? '');
     text = text.replaceAllMapped(
-      RegExp(r'^(#{1,6})\s+(.*)', multiLine: true),
-          (m) => m.group(2) ?? '',
-    );
-
-    // 8. Remove bold+italic: ***bold*** or ___italic___
+        RegExp(r'^(#{1,6})\s+(.*)', multiLine: true), (m) => m.group(2) ?? '');
     text = text.replaceAllMapped(
-      RegExp(r'(\*\*\*)(.*?)\1', dotAll: true),
-          (m) => m.group(2) ?? '',
-    );
+        RegExp(r'(\*\*\*)(.*?)\1', dotAll: true), (m) => m.group(2) ?? '');
     text = text.replaceAllMapped(
-      RegExp(r'(___)(.*?)\1', dotAll: true),
-          (m) => m.group(2) ?? '',
-    );
-
-    // 9. Remove bold: **bold** or __bold__
+        RegExp(r'(___)(.*?)\1', dotAll: true), (m) => m.group(2) ?? '');
     text = text.replaceAllMapped(
-      RegExp(r'(\*\*)(.*?)\1', dotAll: true),
-          (m) => m.group(2) ?? '',
-    );
+        RegExp(r'(\*\*)(.*?)\1', dotAll: true), (m) => m.group(2) ?? '');
     text = text.replaceAllMapped(
-      RegExp(r'(__)(.*?)\1', dotAll: true),
-          (m) => m.group(2) ?? '',
-    );
-
-    // 10. Remove italic: *italic* or _italic_
+        RegExp(r'(__)(.*?)\1', dotAll: true), (m) => m.group(2) ?? '');
     text = text.replaceAllMapped(
-      RegExp(r'(\*)(.*?)\1', dotAll: true),
-          (m) => m.group(2) ?? '',
-    );
+        RegExp(r'(\*)(.*?)\1', dotAll: true), (m) => m.group(2) ?? '');
     text = text.replaceAllMapped(
-      RegExp(r'(_)(.*?)\1', dotAll: true),
-          (m) => m.group(2) ?? '',
-    );
-
-    // 11. Remove strikethrough: ~~strikethrough~~
+        RegExp(r'(_)(.*?)\1', dotAll: true), (m) => m.group(2) ?? '');
     text = text.replaceAllMapped(
-      RegExp(r'(~~)(.*?)\1', dotAll: true),
-          (m) => m.group(2) ?? '',
-    );
-
-    // 12. Remove inline code: `code`
+        RegExp(r'(~~)(.*?)\1', dotAll: true), (m) => m.group(2) ?? '');
     text = text.replaceAllMapped(
-      RegExp(r'(`)(.*?)\1', dotAll: true),
-          (m) => m.group(2) ?? '',
-    );
-
-    // 13. Remove horizontal rules: ---
+        RegExp(r'(`)(.*?)\1', dotAll: true), (m) => m.group(2) ?? '');
     text = text.replaceAllMapped(
-      RegExp(r'^---$', multiLine: true),
-          (m) => '',
-    );
-
-    // 14. Remove other LaTeX commands but preserve their content
-    // This should be done after handling specific commands like \frac
+        RegExp(r'^---$', multiLine: true), (m) => '');
     text = text.replaceAllMapped(
-      RegExp(r'\\[a-zA-Z]+\{([^{}]*)\}', dotAll: true),
-          (m) => '{${m.group(1)}}',
-    );
-
-    // 15. Remove standalone LaTeX commands like \alpha, \beta, etc.
+        RegExp(r'\\[a-zA-Z]+\{([^{}]*)\}', dotAll: true), (m) => '{${m.group(1)}}');
     text = text.replaceAllMapped(
-      RegExp(r'\\[a-zA-Z]+'),
-          (m) => '',
-    );
-
-    // 16. Remove escaped braces \{ and \} by replacing them with { and }
+        RegExp(r'\\[a-zA-Z]+'), (m) => '');
     text = text.replaceAllMapped(
-      RegExp(r'\\([{}])'),
-          (m) => m.group(1) ?? '',
-    );
-
-    // 17. Replace multiple spaces and tabs with a single space, preserve newlines
-    // First, replace spaces and tabs
+        RegExp(r'\\([{}])'), (m) => m.group(1) ?? '');
     text = text.replaceAll(RegExp(r'[ \t]+'), ' ');
-    text = text.trim();
-
-    return text;
+    return text.trim();
   }
 
   @override
   Widget build(BuildContext context) {
-    final isDarkTheme = Theme.of(context).brightness == Brightness.dark;
-    final appBarColor =
-    isDarkTheme ? const Color(0xFF090909) : const Color(0xFFFFFFFF);
-    final scaffoldBackgroundColor =
-    isDarkTheme ? const Color(0xFF090909) : const Color(0xFFFFFFFF);
+    final bool isDarkTheme = Theme.of(context).brightness == Brightness.dark;
+    final appBarColor = isDarkTheme ? const Color(0xFF090909) : const Color(0xFFFFFFFF);
+    final scaffoldBackgroundColor = isDarkTheme ? const Color(0xFF090909) : const Color(0xFFFFFFFF);
     final appBarTextColor = isDarkTheme ? Colors.white : Colors.black;
     final iconColor = isDarkTheme ? Colors.white : Colors.black;
 
@@ -738,22 +725,27 @@ class _SelectTextScreenState extends State<SelectTextScreen>
       backgroundColor: scaffoldBackgroundColor,
       appBar: AppBar(
         scrolledUnderElevation: 0,
-        title: Text(
-          AppLocalizations.of(context)!.selectText,
-          style: TextStyle(color: appBarTextColor),
+        centerTitle: false,
+        titleSpacing: 0,
+        title: Align(
+          alignment: Alignment.centerLeft,
+          child: Text(
+            AppLocalizations.of(context)!.selectText,
+            style: TextStyle(
+              color: appBarTextColor,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         ),
         backgroundColor: appBarColor,
         iconTheme: IconThemeData(color: iconColor),
         actions: [
-          // Visibility Toggle Button with AnimatedSwitcher
           AnimatedSwitcher(
             duration: const Duration(milliseconds: 300),
-            transitionBuilder: (Widget child, Animation<double> animation) {
-              return FadeTransition(
-                opacity: animation,
-                child: child,
-              );
-            },
+            transitionBuilder: (child, animation) => FadeTransition(
+              opacity: animation,
+              child: child,
+            ),
             child: IconButton(
               key: ValueKey<bool>(_hideSpecial),
               icon: Icon(
@@ -761,14 +753,12 @@ class _SelectTextScreenState extends State<SelectTextScreen>
                 color: iconColor,
                 size: 24,
               ),
-              onPressed:
-              _isSwitchingText ? null : _toggleSpecialVisibility, // Disable button during animation
+              onPressed: _isSwitchingText ? null : _toggleSpecialVisibility,
               tooltip: _hideSpecial
                   ? AppLocalizations.of(context)!.showLatex
                   : AppLocalizations.of(context)!.hideLatex,
             ),
           ),
-          // Copy Button using SVG Asset
           IconButton(
             icon: SvgPicture.asset(
               'assets/copy.svg',
@@ -786,16 +776,16 @@ class _SelectTextScreenState extends State<SelectTextScreen>
         padding: const EdgeInsets.all(16.0),
         child: Stack(
           children: [
-            // 1) Old text fading out
+            // Fade-out animation during toggle:
             if (_isSwitchingText)
               FadeTransition(
                 opacity: _fadeOutAnimation,
                 child: SingleChildScrollView(
-                  controller: _scrollController, // Attach the controller
+                  controller: _scrollController,
                   child: SelectableText(
                     _hideSpecial
-                        ? _stripMarkup(widget.messageText)
-                        : widget.messageText,
+                        ? _stripMarkup(widget.messageNotifier.value)
+                        : widget.messageNotifier.value,
                     style: TextStyle(
                       color: isDarkTheme ? Colors.white : Colors.black,
                       fontSize: 16,
@@ -803,13 +793,12 @@ class _SelectTextScreenState extends State<SelectTextScreen>
                   ),
                 ),
               ),
-
-            // 2) New text fading in
+            // Fade-in animation after toggle:
             if (_isSwitchingText)
               FadeTransition(
                 opacity: _fadeInAnimation,
                 child: SingleChildScrollView(
-                  controller: _scrollController, // Attach the controller
+                  controller: _scrollController,
                   child: SelectableText(
                     _displayedText,
                     style: TextStyle(
@@ -819,18 +808,38 @@ class _SelectTextScreenState extends State<SelectTextScreen>
                   ),
                 ),
               ),
-
-            // 3) Idle state: Show current text
+            // Normal state: _displayedText combined with new incoming chunk(s)
             if (!_isSwitchingText)
-              SingleChildScrollView(
-                controller: _scrollController, // Attach the controller
-                child: SelectableText(
-                  _displayedText,
-                  style: TextStyle(
-                    color: isDarkTheme ? Colors.white : Colors.black,
-                    fontSize: 16,
-                  ),
-                ),
+              AnimatedBuilder(
+                animation: _chunkFadeInController,
+                builder: (context, child) {
+                  final chunkOpacity = _chunkFadeInAnimation.value;
+                  return SingleChildScrollView(
+                    controller: _scrollController,
+                    child: SelectableText.rich(
+                      TextSpan(
+                        children: [
+                          ..._displayedSpans,
+                          if (_animatingChunk.isNotEmpty)
+                            WidgetSpan(
+                              child: Opacity(
+                                opacity: chunkOpacity,
+                                child: RichText(
+                                  text: TextSpan(
+                                    children: parseText(_animatingChunk, isDarkTheme),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      style: TextStyle(
+                        color: isDarkTheme ? Colors.white : Colors.black,
+                        fontSize: 16,
+                      ),
+                    ),
+                  );
+                },
               ),
           ],
         ),

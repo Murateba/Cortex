@@ -44,7 +44,6 @@ class FileDownloadHelper extends ChangeNotifier {
 
         final DownloadTaskStatus status = DownloadTaskStatus.values[statusInt];
         _status = _statusFromDownloadStatus(status);
-        // Burada refresh() metodu da çağrılabilir:
         refresh();
 
         final taskInfo = _tasks[taskId];
@@ -53,8 +52,7 @@ class FileDownloadHelper extends ChangeNotifier {
           final String spKeyDownloading = 'is_downloading_${taskInfo.modelId}';
           final String spKeyDownloaded = 'is_downloaded_${taskInfo.modelId}';
 
-          if (status == DownloadTaskStatus.running ||
-              status == DownloadTaskStatus.enqueued) {
+          if (status == DownloadTaskStatus.running || status == DownloadTaskStatus.enqueued) {
             prefs.setBool(spKeyDownloading, true);
             prefs.setBool(spKeyDownloaded, false);
           } else if (status == DownloadTaskStatus.complete) {
@@ -62,8 +60,7 @@ class FileDownloadHelper extends ChangeNotifier {
             prefs.setBool(spKeyDownloaded, true);
           } else if (status == DownloadTaskStatus.paused) {
             prefs.setBool(spKeyDownloading, false);
-          } else if (status == DownloadTaskStatus.failed ||
-              status == DownloadTaskStatus.canceled) {
+          } else if (status == DownloadTaskStatus.failed || status == DownloadTaskStatus.canceled) {
             prefs.setBool(spKeyDownloading, false);
             prefs.setBool(spKeyDownloaded, false);
           }
@@ -74,15 +71,18 @@ class FileDownloadHelper extends ChangeNotifier {
           } else if (status == DownloadTaskStatus.complete) {
             taskInfo.onDownloadCompleted(taskInfo.filePath);
             _tasks.remove(taskId);
-          } else if (status == DownloadTaskStatus.failed) {
-            taskInfo.onDownloadError('Download failed');
+          } else if (status == DownloadTaskStatus.failed || status == DownloadTaskStatus.canceled) {
+            // canceled durumunu da burada işliyoruz:
+            final errorMessage = (status == DownloadTaskStatus.failed)
+                ? 'Download failed'
+                : 'Download canceled';
+            taskInfo.onDownloadError(errorMessage);
             _tasks.remove(taskId);
           } else if (status == DownloadTaskStatus.paused) {
             taskInfo.onDownloadPaused();
           }
         }
       } catch (e) {
-        // Hata olması durumunda bildirim (opsiyonel)
         debugPrint('Download callback error: $e');
       }
     });

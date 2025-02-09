@@ -285,7 +285,7 @@
     "starConversation": "Star",
     "today": "Today",
     "yesterday": "Yesterday",
-    "addModel": "Add Model",
+    "addModel": "Create",
     "seeAll": "See All",
     "modelTinyLlamaShortDescription": "A lightweight model, suitable for devices with limited resources.",
     "modelPhiShortDescription": "A compact model specialized in language processing.",

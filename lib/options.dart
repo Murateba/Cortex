@@ -17,6 +17,7 @@ enum MessageOption {
 
 class AnimatedMessageOptionsPanel extends StatefulWidget {
   final String messageText;
+  final ValueNotifier<String> messageNotifier; // EKLENDİ
   final bool isDarkTheme;
   final List<MessageOption> options;
   final bool isReported;
@@ -30,6 +31,7 @@ class AnimatedMessageOptionsPanel extends StatefulWidget {
   const AnimatedMessageOptionsPanel({
     Key? key,
     required this.messageText,
+    required this.messageNotifier, // EKLENDİ
     required this.isDarkTheme,
     required this.options,
     this.isReported = false,
@@ -123,8 +125,7 @@ class _AnimatedMessageOptionsPanelState
                   width: panelWidth,
                   height: panelHeight,
                   decoration: BoxDecoration(
-                    color:
-                    widget.isDarkTheme ? const Color(0xFF202020) : Colors.white,
+                    color: widget.isDarkTheme ? const Color(0xFF202020) : Colors.white,
                     borderRadius: BorderRadius.circular(8.0),
                     boxShadow: const [
                       BoxShadow(
@@ -272,11 +273,10 @@ class _AnimatedMessageOptionsPanelState
     return InkWell(
       onTap: () {
         _dismissPanel();
-        // "Select Text" ekranını açıyoruz
         _navigateToScreen(
           context,
-          SelectTextScreen(messageText: widget.messageText), // Mesaj metnini geçiriyoruz
-          direction: Offset(1.0, 0.0), // Sağdan sola geçiş için Offset ayarı
+          SelectTextScreen(messageNotifier: widget.messageNotifier),
+          direction: Offset(1.0, 0.0), // Sağdan sola geçiş için
         );
       },
       child: Container(
@@ -330,23 +330,22 @@ class _AnimatedMessageOptionsPanelState
   }
 }
 
-/// showMessageOptions fonksiyonu, animasyonlu paneli gösterir.
 Future<void> showMessageOptions({
   required BuildContext context,
   required Offset tapPosition,
   required String messageText,
+  ValueNotifier<String>? messageNotifier, // Opsiyonel: varsa gerçek notifier, yoksa oluşturulacak
   required bool isDarkTheme,
   required List<MessageOption> options,
   bool isReported = false,
   VoidCallback? onReport,
-
   VoidCallback? onRegenerate,
 }) async {
+  // Eğer messageNotifier geçilmemişse, statik metni saran yeni bir notifier oluştur.
+  final notifier = messageNotifier ?? ValueNotifier<String>(messageText);
   final overlay = Overlay.of(context);
   final overlayBox = overlay.context.findRenderObject() as RenderBox?;
   if (overlayBox == null) return;
-
-  // Global pozisyonu overlay'in yerel pozisyonuna dönüştür
   final localPosition = overlayBox.globalToLocal(tapPosition);
 
   OverlayEntry? entry;
@@ -355,6 +354,7 @@ Future<void> showMessageOptions({
     builder: (context) {
       return AnimatedMessageOptionsPanel(
         messageText: messageText,
+        messageNotifier: notifier,
         isDarkTheme: isDarkTheme,
         options: options,
         isReported: isReported,
@@ -363,7 +363,7 @@ Future<void> showMessageOptions({
           entry?.remove();
         },
         position: localPosition,
-        onRegenerate: onRegenerate, // <--- YENİ
+        onRegenerate: onRegenerate,
       );
     },
   );

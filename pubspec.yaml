@@ -3,7 +3,7 @@ description: "Vertex of Artificial Intelligence"
 
 publish_to: 'none'
 
-version: 0.8.53+52
+version: 0.8.56+56
 
 environment:
   sdk: '>=3.4.3 <4.0.0'
@@ -124,4 +124,6 @@ flutter:
     - assets/select.svg
     - assets/language.svg
     - assets/theme.svg
+    - assets/plus.svg
+    - assets/arrov.svg
     - .env
