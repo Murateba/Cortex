@@ -223,10 +223,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
   void _showComingSoonMessage() {
     final notificationService =
     Provider.of<NotificationService>(context, listen: false);
-    final isDarkTheme =
-        Provider
-            .of<ThemeProvider>(context, listen: false)
-            .isDarkTheme;
 
     notificationService.showNotification(
       message: AppLocalizations.of(context)!.comingSoon,
@@ -314,7 +310,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
         await _saveUserEmail();
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (context) => mainScreen),
+          MaterialPageRoute(builder: (context) => MainScreen(key: mainScreenKey)),
         );
       } else {
         final isAvailable = await _isUsernameAvailable(_username);
@@ -454,7 +450,6 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
   Widget _buildAuthForm() {
     final appLocalizations = AppLocalizations.of(context)!;
-    final isDarkTheme = Provider.of<ThemeProvider>(context).isDarkTheme;
 
     final deviceHeight = MediaQuery.of(context).size.height;
 
@@ -489,8 +484,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
               ),
               decoration: InputDecoration(
                 filled: true,
-                fillColor:
-                isDarkTheme ? const Color(0xFF1b1b1b) : Colors.grey[200],
+                fillColor: AppColors.secondaryColor,
                 labelText: appLocalizations.email,
                 labelStyle: TextStyle(
                   color: Theme.of(context).textTheme.bodySmall?.color,
@@ -541,7 +535,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
               decoration: InputDecoration(
                 filled: true,
                 fillColor:
-                isDarkTheme ? const Color(0xFF1b1b1b) : Colors.grey[200],
+                AppColors.secondaryColor,
                 labelText: appLocalizations.password,
                 labelStyle: TextStyle(
                   color: Theme.of(context).textTheme.bodySmall?.color,
@@ -603,8 +597,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                     _rememberMe = value ?? false;
                   });
                 },
-                checkColor: isDarkTheme ? Colors.black : Colors.white,
-                activeColor: isDarkTheme ? Colors.white : Colors.black,
+                checkColor: AppColors.primaryColor,
+                activeColor: AppColors.opposedPrimaryColor
               ),
               Text(
                 appLocalizations.rememberMe,
@@ -623,7 +617,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
               width: double.infinity,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: isDarkTheme ? Colors.white : Colors.black,
+                  backgroundColor: AppColors.opposedPrimaryColor,
                   padding: EdgeInsets.symmetric(vertical: deviceHeight * 0.02),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -634,7 +628,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                   appLocalizations.logIn,
                   style: TextStyle(
                     fontSize: 18,
-                    color: isDarkTheme ? Colors.black : Colors.white,
+                    color: AppColors.primaryColor,
                   ),
                 ),
               ),
@@ -676,7 +670,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
               decoration: InputDecoration(
                 filled: true,
                 fillColor:
-                isDarkTheme ? const Color(0xFF1b1b1b) : Colors.grey[200],
+                AppColors.secondaryColor,
                 labelText: appLocalizations.username,
                 labelStyle: TextStyle(
                   color: Theme.of(context).textTheme.bodySmall?.color,
@@ -728,8 +722,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
               ),
               decoration: InputDecoration(
                 filled: true,
-                fillColor:
-                isDarkTheme ? const Color(0xFF1b1b1b) : Colors.grey[200],
+                fillColor: AppColors.secondaryColor,
                 labelText: appLocalizations.email,
                 labelStyle: TextStyle(
                   color: Theme.of(context).textTheme.bodySmall?.color,
@@ -746,6 +739,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                 errorMaxLines: 3,
               ),
               maxLength: 42,
+              keyboardType: TextInputType.emailAddress, // Klavyede @ işareti çıkması için eklendi
               validator: (value) {
                 if (_registerEmailError != null) {
                   final temp = _registerEmailError;
@@ -779,7 +773,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
               decoration: InputDecoration(
                 filled: true,
                 fillColor:
-                isDarkTheme ? const Color(0xFF1b1b1b) : Colors.grey[200],
+                AppColors.secondaryColor,
                 labelText: appLocalizations.password,
                 labelStyle: TextStyle(
                   color: Theme.of(context).textTheme.bodySmall?.color,
@@ -840,7 +834,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
               decoration: InputDecoration(
                 filled: true,
                 fillColor:
-                isDarkTheme ? const Color(0xFF1b1b1b) : Colors.grey[200],
+                AppColors.secondaryColor,
                 labelText: appLocalizations.confirmPassword,
                 labelStyle: TextStyle(
                   color: Theme.of(context).textTheme.bodySmall?.color,
@@ -899,7 +893,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
               width: double.infinity,
               child: ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: isDarkTheme ? Colors.white : Colors.black,
+                  backgroundColor: AppColors.opposedPrimaryColor,
                   padding: EdgeInsets.symmetric(vertical: deviceHeight * 0.02),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
@@ -910,7 +904,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                   appLocalizations.signUp,
                   style: TextStyle(
                     fontSize: 18,
-                    color: isDarkTheme ? Colors.black : Colors.white,
+                    color: AppColors.primaryColor,
                   ),
                 ),
               ),
@@ -994,9 +988,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                   width: double.infinity,
                   child: ElevatedButton.icon(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Provider.of<ThemeProvider>(context).isDarkTheme
-                          ? Colors.white
-                          : Colors.black,
+                      backgroundColor: AppColors.opposedPrimaryColor,
                       padding: EdgeInsets.symmetric(vertical: 16 * screenHeight / 812), // Dinamik padding
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10 * fontScale),
@@ -1013,17 +1005,13 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                     },
                     icon: Icon(
                       Icons.g_mobiledata,
-                      color: Provider.of<ThemeProvider>(context).isDarkTheme
-                          ? Colors.black
-                          : Colors.white,
+                      color: AppColors.primaryColor,
                       size: 24 * fontScale, // Dinamik ikon boyutu
                     ),
                     label: Text(
                       AppLocalizations.of(context)!.continueWithGoogle,
                       style: TextStyle(
-                        color: Provider.of<ThemeProvider>(context).isDarkTheme
-                            ? Colors.black
-                            : Colors.white,
+                        color: AppColors.primaryColor,
                         fontSize: 16 * fontScale, // Dinamik font boyutu
                       ),
                     ),
@@ -1041,51 +1029,54 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                 child: AnimatedSize(
                   duration: const Duration(milliseconds: 500),
                   curve: Curves.easeInOut,
-                  child: _authMode == AuthMode.register
-                      ? Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: 20.0 * MediaQuery.of(context).size.width / 375,
-                    ), // Adjusted padding
-                    child: Row(
-                      children: [
-                        // Expanded FittedBox for text to ensure single line
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () => _showTermsOfUse(context),
-                            child: FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                AppLocalizations.of(context)!.iHaveReadAndAgree,
-                                style: TextStyle(
-                                  color: Theme.of(context).textTheme.bodyLarge?.color,
-                                  fontSize: 14 * (MediaQuery.of(context).size.width / 375), // Dynamic font size
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 100),
+                    switchInCurve: Curves.easeIn,
+                    switchOutCurve: Curves.easeOut,
+                    transitionBuilder: (Widget child, Animation<double> animation) {
+                      return FadeTransition(opacity: animation, child: child);
+                    },
+                    child: _authMode == AuthMode.register
+                        ? Padding(
+                      key: const ValueKey('terms'),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: 20.0 * MediaQuery.of(context).size.width / 375,
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () => _showTermsOfUse(context),
+                              child: FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  AppLocalizations.of(context)!.iHaveReadAndAgree,
+                                  style: TextStyle(
+                                    color: Theme.of(context).textTheme.bodyLarge?.color,
+                                    fontSize: 14 * (MediaQuery.of(context).size.width / 375),
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                maxLines: 1, // Ensure single line
-                                overflow: TextOverflow.ellipsis, // Add ellipsis if text is too long
                               ),
                             ),
                           ),
-                        ),
-                        // Checkbox on the right
-                        Checkbox(
-                          value: _agreeToTerms,
-                          onChanged: (bool? value) {
-                            setState(() {
-                              _agreeToTerms = value ?? false;
-                            });
-                          },
-                          checkColor: Provider.of<ThemeProvider>(context).isDarkTheme
-                              ? Colors.black
-                              : Colors.white,
-                          activeColor: Provider.of<ThemeProvider>(context).isDarkTheme
-                              ? Colors.white
-                              : Colors.black,
-                        ),
-                      ],
-                    ),
-                  )
-                      : SizedBox.shrink(),
+                          Checkbox(
+                            value: _agreeToTerms,
+                            onChanged: (bool? value) {
+                              setState(() {
+                                _agreeToTerms = value ?? false;
+                              });
+                            },
+                            checkColor: AppColors.primaryColor,
+                            activeColor: AppColors.opposedPrimaryColor,
+                          ),
+                        ],
+                      ),
+                    )
+                        : const SizedBox(key: ValueKey('empty')),
+                  ),
                 ),
               ),
               SizedBox(height: 4 * screenHeight / 812), // Dinamik yükseklik
@@ -1125,10 +1116,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
   void _showTermsOfUse(BuildContext context) {
     final localizations = AppLocalizations.of(context)!;
-    final isDarkTheme =
-        Provider.of<ThemeProvider>(context, listen: false).isDarkTheme;
-    final backgroundColor = isDarkTheme ? const Color(0xFF121212) : Colors.white;
-    final textColor = isDarkTheme ? Colors.white : Colors.black;
+    final backgroundColor = AppColors.background;
+    final textColor = AppColors.opposedPrimaryColor;
 
     // Ekran boyutlarını alıyoruz
     final deviceWidth = MediaQuery.of(context).size.width;
@@ -1459,7 +1448,6 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
   @override
   Widget build(BuildContext context) {
     final appLocalizations = AppLocalizations.of(context)!;
-    final isDarkTheme = Provider.of<ThemeProvider>(context).isDarkTheme;
 
     // Ekran boyutlarını alıyoruz
     final deviceWidth = MediaQuery.of(context).size.width;
@@ -1530,9 +1518,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                   padding: EdgeInsets.symmetric(horizontal: deviceWidth * 0.1),
                   child: ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: isDarkTheme
-                          ? const Color(0xFF0D31FE)
-                          : const Color(0xFF0D62FE),
+                      backgroundColor: AppColors.background,
                       padding: EdgeInsets.symmetric(vertical: deviceHeight * 0.022),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(10),
@@ -1544,7 +1530,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                         appLocalizations.resendCode,
                         maxLines: 1,
                         style: TextStyle(
-                          color: isDarkTheme ? Colors.black : Colors.white,
+                          color: AppColors.primaryColor,
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
                         ),
@@ -1561,7 +1547,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                   onPressed: () {
                     _timer?.cancel();
                     Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(builder: (context) => mainScreen),
+                      MaterialPageRoute(builder: (context) => MainScreen(key: mainScreenKey)),
                     );
                   },
                   child: Text(
@@ -1570,7 +1556,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: isDarkTheme ? Colors.white : Colors.black,
+                      color: AppColors.opposedPrimaryColor
                     ),
                   ),
                 ),
@@ -1582,7 +1568,7 @@ class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
                   appLocalizations.verificationScreenWarning,
                   style: TextStyle(
                     fontSize: 14,
-                    color: isDarkTheme ? Colors.white : Colors.black,
+                    color: AppColors.opposedPrimaryColor
                   ),
                   textAlign: TextAlign.center,
                 ),

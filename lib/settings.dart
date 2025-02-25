@@ -3,13 +3,14 @@ import 'dart:async';
 
 import 'package:cortex/theme.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'chat.dart';
+import 'chat/chat.dart';
 import 'locale_provider.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -72,7 +73,6 @@ class AccountScreen extends StatefulWidget {
 class _AccountScreenState extends State<AccountScreen>
     with TickerProviderStateMixin {
   String _selectedLanguageCode = 'en';
-  bool _isDarkTheme = false;
   Map<String, dynamic>? _userData;
   int _hasCortexSubscription = 0;
   bool _isAlphaUser = false; // For alpha user
@@ -116,7 +116,6 @@ class _AccountScreenState extends State<AccountScreen>
   @override
   void initState() {
     super.initState();
-    _loadThemePreference();
     _fetchUserData();
     _checkInternetStatus(); // İnternet durumunu kontrol et
 
@@ -210,7 +209,7 @@ class _AccountScreenState extends State<AccountScreen>
           _verifyAttempts = verifyAttempts; // Assign to the class variable
           _remainingSeconds = remain > 0 ? remain : 0;
           _isVerified = isVerifiedAuth;
-          _hasCortexSubscription = data['cortexSubscription'] ?? 0; // Update subscription
+          _hasCortexSubscription = data['hasCortexSubscription'] ?? 0; // Update subscription
           _isAlphaUser = data['alphaUser'] ?? false; // Update alpha user status
         });
       } else {
@@ -219,7 +218,7 @@ class _AccountScreenState extends State<AccountScreen>
           _verifyAttempts = verifyAttempts;
           _remainingSeconds = 0;
           _isVerified = isVerifiedAuth;
-          _hasCortexSubscription = data['cortexSubscription'] ?? 0;
+          _hasCortexSubscription = data['hasCortexSubscription'] ?? 0;
           _isAlphaUser = data['alphaUser'] ?? false;
         });
       }
@@ -239,16 +238,15 @@ class _AccountScreenState extends State<AccountScreen>
   Widget _buildUnverifiedPanel(AppLocalizations appLocalizations) {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
-
     final timeStr = _formatRemainingTime(_remainingSeconds);
 
     return Container(
       margin: EdgeInsets.only(bottom: screenHeight * 0.02),
       padding: EdgeInsets.all(screenWidth * 0.04),
       decoration: BoxDecoration(
-        color: _isDarkTheme ? Colors.grey[900] : Colors.grey[200],
+        color: AppColors.unverifiedPanelBackground,
         borderRadius: BorderRadius.circular(12.0),
-        border: Border.all(color: Colors.red, width: 2),
+        border: Border.all(color: AppColors.warning, width: 2),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -258,7 +256,7 @@ class _AccountScreenState extends State<AccountScreen>
             style: TextStyle(
               fontSize: screenWidth * 0.045,
               fontWeight: FontWeight.bold,
-              color: _isDarkTheme ? Colors.white : Colors.black,
+              color: AppColors.opposedPrimaryColor,
             ),
             textAlign: TextAlign.center,
           ),
@@ -267,18 +265,17 @@ class _AccountScreenState extends State<AccountScreen>
             appLocalizations.unverifiedAccountWarning(timeStr),
             style: TextStyle(
               fontSize: screenWidth * 0.035,
-              color: _isDarkTheme ? Colors.white70 : Colors.black87,
+              color: AppColors.quinaryColor,
             ),
             textAlign: TextAlign.center,
           ),
           SizedBox(height: screenHeight * 0.015),
-          // AnimatedTime:
           AnimatedTime(
             time: timeStr,
             style: GoogleFonts.anaheim(
               textStyle: TextStyle(
                 fontSize: screenWidth * 0.05,
-                color: _isDarkTheme ? Colors.white : Colors.black,
+                color: AppColors.opposedPrimaryColor,
                 fontWeight: FontWeight.w900,
               ),
             ),
@@ -289,9 +286,7 @@ class _AccountScreenState extends State<AccountScreen>
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
                 minimumSize: Size.fromHeight(screenHeight * 0.06),
-                backgroundColor: _isDarkTheme
-                    ? const Color(0xFF0D31FE)
-                    : const Color(0xFF0D62FE),
+                backgroundColor: AppColors.senaryColor,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
@@ -300,7 +295,7 @@ class _AccountScreenState extends State<AccountScreen>
               child: Text(
                 appLocalizations.verifyNow,
                 style: TextStyle(
-                  color: _isDarkTheme ? Colors.black : Colors.white,
+                  color: AppColors.opposedPrimaryColor,
                   fontSize: screenWidth * 0.04,
                 ),
               ),
@@ -312,27 +307,22 @@ class _AccountScreenState extends State<AccountScreen>
             child: ElevatedButton(
               style: ElevatedButton.styleFrom(
                 minimumSize: Size.fromHeight(screenHeight * 0.06),
-                backgroundColor: _isDarkTheme
-                    ? const Color(0xFF0D31FE)
-                    : const Color(0xFF0D62FE),
+                backgroundColor: AppColors.senaryColor,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              onPressed: _verifyAttempts >= 2
-                  ? null
-                  : _resendVerificationEmailFromAccount,
+              onPressed: _verifyAttempts >= 2 ? null : _resendVerificationEmailFromAccount,
               child: Text(
                 appLocalizations.resendCode,
-                textAlign: TextAlign.center,  // <-- Bu satırı ekleyin
+                textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: _isDarkTheme ? Colors.black : Colors.white,
+                  color: AppColors.opposedPrimaryColor,
                   fontSize: screenWidth * 0.04,
                 ),
               ),
             ),
           ),
-          // 3b. **Show max resend limit message if applicable:**
           if (_verifyAttempts >= 2)
             Padding(
               padding: EdgeInsets.only(top: screenHeight * 0.01),
@@ -341,7 +331,7 @@ class _AccountScreenState extends State<AccountScreen>
                   appLocalizations.maxResendLimitReached,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    color: Colors.red,
+                    color: AppColors.warning,
                     fontSize: screenWidth * 0.035,
                     fontWeight: FontWeight.bold,
                   ),
@@ -468,27 +458,6 @@ class _AccountScreenState extends State<AccountScreen>
     }
   }
 
-  /// Kullanıcı temayı SharedPreferences'tan yükler
-  Future<void> _loadThemePreference() async {
-    final prefs = await SharedPreferences.getInstance();
-    bool? savedTheme = prefs.getBool('isDarkTheme');
-
-    if (savedTheme == null) {
-      final brightness = MediaQuery.of(context).platformBrightness;
-      _isDarkTheme = brightness == Brightness.dark;
-    } else {
-      _isDarkTheme = savedTheme;
-    }
-
-    setState(() {});
-  }
-
-  /// Kullanıcı temayı SharedPreferences'a kaydeder
-  Future<void> _saveThemePreference(bool isDarkTheme) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('isDarkTheme', isDarkTheme);
-  }
-
   /// Dili değiştirir
   void _changeLanguage(String languageCode) {
     final localeProvider = Provider.of<LocaleProvider>(context, listen: false);
@@ -499,18 +468,6 @@ class _AccountScreenState extends State<AccountScreen>
     ChatScreenState.languageHasJustChanged = true;
   }
 
-  void _changeTheme(String theme) {
-    bool isDark = theme == 'dark';
-    setState(() {
-      _isDarkTheme = isDark;
-    });
-    _saveThemePreference(isDark);
-
-    final themeProvider =
-    Provider.of<ThemeProvider>(context, listen: false);
-    themeProvider.toggleTheme(isDark);
-  }
-
   /// İnternet bağlantısı var mı?
   Future<bool> _hasInternetConnection() async {
     return await InternetConnection().hasInternetAccess;
@@ -519,8 +476,8 @@ class _AccountScreenState extends State<AccountScreen>
   @override
   Widget build(BuildContext context) {
     final appLocalizations = AppLocalizations.of(context)!;
-
-    // Determine the display name and email
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: true);
+    // Determine the display name and email remains the same…
     String displayName;
     String email;
     if (_userData != null && _userData!['username'] != null) {
@@ -531,18 +488,17 @@ class _AccountScreenState extends State<AccountScreen>
     email = FirebaseAuth.instance.currentUser?.email ?? '';
 
     return Scaffold(
-      backgroundColor: _isDarkTheme ? const Color(0xFF141414) : Colors.white,
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         scrolledUnderElevation: 0,
         title: Text(
           appLocalizations.settings,
-          style:
-          GoogleFonts.roboto(color: _isDarkTheme ? Colors.white : Colors.black),
+          style: GoogleFonts.roboto(color: AppColors.opposedPrimaryColor),
         ),
-        backgroundColor: _isDarkTheme ? const Color(0xFF141414) : Colors.white,
+        backgroundColor: AppColors.background,
         elevation: 0,
         iconTheme: IconThemeData(
-          color: _isDarkTheme ? Colors.white : Colors.black,
+          color: AppColors.opposedPrimaryColor,
         ),
       ),
       body: AnimatedSwitcher(
@@ -562,7 +518,7 @@ class _AccountScreenState extends State<AccountScreen>
 
   /// Kayıtları gelene kadar skeleton göstermek için
   Widget _buildSkeletonLoader() {
-    return SkeletonLoaderShimmer(isDarkTheme: _isDarkTheme);
+    return SkeletonLoaderShimmer();
   }
 
   Widget _buildContent(String displayName, String email, AppLocalizations appLocalizations) {
@@ -600,8 +556,8 @@ class _AccountScreenState extends State<AccountScreen>
     final screenHeight = MediaQuery.of(context).size.height;
 
     double avatarSize = screenWidth * 0.25;
-    double fontSizeName = screenWidth * 0.06;  // örn: ~24 px (360px genişlikte)
-    double fontSizeEmail = screenWidth * 0.04; // örn: ~14-16 px
+    double fontSizeName = screenWidth * 0.06;
+    double fontSizeEmail = screenWidth * 0.04;
     double spacing = screenWidth * 0.04;
 
     return Column(
@@ -610,7 +566,6 @@ class _AccountScreenState extends State<AccountScreen>
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Abonelik varsa animasyonlu border ile
             if (_hasCortexSubscription >= 1)
               AnimatedBuilder(
                 animation: _animationController,
@@ -618,7 +573,6 @@ class _AccountScreenState extends State<AccountScreen>
                   return CustomPaint(
                     painter: AnimatedBorderPainter(
                       animationValue: _animation.value,
-                      isDarkTheme: _isDarkTheme,
                     ),
                     child: Container(
                       width: avatarSize,
@@ -626,12 +580,12 @@ class _AccountScreenState extends State<AccountScreen>
                       padding: EdgeInsets.all(screenWidth * 0.01),
                       child: CircleAvatar(
                         radius: avatarSize / 2.2,
-                        backgroundColor: _isDarkTheme ? Colors.grey[800] : Colors.grey[300],
+                        backgroundColor: AppColors.secondaryColor,
                         child: Text(
                           displayName.isNotEmpty ? displayName[0].toUpperCase() : '',
                           style: TextStyle(
                             fontSize: avatarSize / 2.5,
-                            color: _isDarkTheme ? Colors.white : Colors.black,
+                            color: AppColors.opposedPrimaryColor,
                           ),
                         ),
                       ),
@@ -640,19 +594,18 @@ class _AccountScreenState extends State<AccountScreen>
                 },
               )
             else
-            // Abonelik yoksa normal border
               Container(
                 width: avatarSize,
                 height: avatarSize,
                 padding: EdgeInsets.all(screenWidth * 0.01),
                 child: CircleAvatar(
                   radius: avatarSize / 2.2,
-                  backgroundColor: _isDarkTheme ? Colors.grey[800] : Colors.grey[300],
+                  backgroundColor: AppColors.secondaryColor,
                   child: Text(
                     displayName.isNotEmpty ? displayName[0].toUpperCase() : '',
                     style: TextStyle(
                       fontSize: avatarSize / 2.5,
-                      color: _isDarkTheme ? Colors.white : Colors.black,
+                      color: AppColors.opposedPrimaryColor,
                     ),
                   ),
                 ),
@@ -662,14 +615,13 @@ class _AccountScreenState extends State<AccountScreen>
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Kullanıcı adı
                   FittedBox(
                     fit: BoxFit.scaleDown,
                     alignment: Alignment.centerLeft,
                     child: Text(
                       displayName,
                       style: GoogleFonts.poppins(
-                        color: _isDarkTheme ? Colors.white : Colors.black,
+                        color: AppColors.opposedPrimaryColor,
                         fontSize: fontSizeName,
                         fontWeight: FontWeight.w600,
                       ),
@@ -677,14 +629,13 @@ class _AccountScreenState extends State<AccountScreen>
                       overflow: TextOverflow.ellipsis,
                     ),
                   ),
-                  // Email
                   FittedBox(
                     fit: BoxFit.scaleDown,
                     alignment: Alignment.centerLeft,
                     child: Text(
                       email,
                       style: GoogleFonts.poppins(
-                        color: _isDarkTheme ? Colors.white70 : Colors.black54,
+                        color: AppColors.quinaryColor,
                         fontSize: fontSizeEmail,
                         fontWeight: FontWeight.w400,
                       ),
@@ -764,8 +715,8 @@ class _AccountScreenState extends State<AccountScreen>
         Text(
           appLocalizations.user,
           style: GoogleFonts.roboto(
-            color: _isDarkTheme ? Colors.white : Colors.black,
-            fontSize: screenWidth * 0.05, // ~20-22 px
+            color: AppColors.opposedPrimaryColor,
+            fontSize: screenWidth * 0.05,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -773,13 +724,11 @@ class _AccountScreenState extends State<AccountScreen>
         Text(
           appLocalizations.manageProfileDescription,
           style: GoogleFonts.roboto(
-            color: _isDarkTheme ? Colors.white70 : Colors.black87,
-            fontSize: screenWidth * 0.035, // ~14-16 px
+            color: AppColors.quinaryColor,
+            fontSize: screenWidth * 0.035,
           ),
         ),
         SizedBox(height: screenHeight * 0.02),
-
-        // Profil Düzenle
         _buildCenteredButton(
           context: context,
           text: appLocalizations.editProfile,
@@ -801,8 +750,6 @@ class _AccountScreenState extends State<AccountScreen>
           },
         ),
         SizedBox(height: screenHeight * 0.015),
-
-        // Şifre Değiştir
         _buildCenteredButton(
           context: context,
           text: appLocalizations.changePassword,
@@ -821,8 +768,6 @@ class _AccountScreenState extends State<AccountScreen>
           },
         ),
         SizedBox(height: screenHeight * 0.015),
-
-        // Çıkış Yap
         _buildCenteredButton(
           context: context,
           text: appLocalizations.logout,
@@ -844,7 +789,15 @@ class _AccountScreenState extends State<AccountScreen>
   }
 
   Future<void> _showLogoutConfirmationDialog(AppLocalizations appLocalizations) async {
-    showGeneralDialog(
+    if (_isDialogOpen) return;
+    setState(() => _isDialogOpen = true);
+
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(
+        systemNavigationBarColor: AppColors.background,
+      ),
+    );
+    await showGeneralDialog(
       context: context,
       barrierDismissible: true,
       barrierLabel: 'Logout',
@@ -856,88 +809,105 @@ class _AccountScreenState extends State<AccountScreen>
             child: Container(
               width: MediaQuery.of(ctx).size.width * 0.8,
               decoration: BoxDecoration(
-                color: _isDarkTheme ? const Color(0xFF191919) : Colors.white,
+                color: AppColors.dialogColor,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Padded Content (Title and Message)
-                  Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      children: [
-                        // Title
-                        Text(
-                          appLocalizations.logout,
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: _isDarkTheme ? Colors.white : Colors.black,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 12),
-                        // Message
-                        Text(
-                          appLocalizations.logoutConfirmationTitle,
-                          style: TextStyle(
-                            color: _isDarkTheme ? Colors.white70 : Colors.black87,
-                            fontSize: 14,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                  ),
-                  // HORIZONTAL DIVIDER
-                  Divider(
-                    color: _isDarkTheme ? Colors.white30 : Colors.black26,
-                    thickness: 0.5,
-                    height: 1,
-                  ),
-                  // Buttons row with vertical divider
-                  IntrinsicHeight(
-                    child: Row(
-                      children: [
-                        // Left button: NO
-                        Expanded(
-                          child: TextButton(
-                            style: TextButton.styleFrom(
-                              foregroundColor: Colors.blue,
-                              padding: const EdgeInsets.symmetric(vertical: 16),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        children: [
+                          Text(
+                            appLocalizations.logout,
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.opposedPrimaryColor,
                             ),
-                            onPressed: () => Navigator.of(ctx).pop(),
-                            child: Text(appLocalizations.no),
+                            textAlign: TextAlign.center,
                           ),
-                        ),
-                        // Vertical Divider
-                        VerticalDivider(
-                          width: 1,
-                          thickness: 0.5,
-                          color: _isDarkTheme ? Colors.white30 : Colors.black26,
-                        ),
-                        // Right button: YES
-                        Expanded(
-                          child: TextButton(
-                            style: TextButton.styleFrom(
-                              foregroundColor: Colors.red,
-                              padding: const EdgeInsets.symmetric(vertical: 16),
+                          const SizedBox(height: 12),
+                          Text(
+                            appLocalizations.logoutConfirmationTitle,
+                            style: TextStyle(
+                              color: AppColors.opposedPrimaryColor.withOpacity(0.4),
+                              fontSize: 14,
                             ),
-                            onPressed: () async {
-                              await FirebaseAuth.instance.signOut();
-                              Navigator.of(context).pushAndRemoveUntil(
-                                MaterialPageRoute(builder: (context) => const LoginScreen()),
-                                    (Route<dynamic> route) => false,
-                              );
-                            },
-                            child: Text(appLocalizations.yes),
+                            textAlign: TextAlign.center,
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                    Divider(
+                      color: AppColors.dialogDivider,
+                      thickness: 0.5,
+                      height: 1,
+                    ),
+                    IntrinsicHeight(
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                splashColor: Colors.blue.withOpacity(0.3),
+                                highlightColor: Colors.blue.withOpacity(0.1),
+                                onTap: () => Navigator.of(ctx).pop(),
+                                child: Container(
+                                  alignment: Alignment.center,
+                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  child: Text(
+                                    appLocalizations.no,
+                                    style: const TextStyle(
+                                      color: Colors.blue,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          VerticalDivider(
+                            width: 1,
+                            thickness: 0.5,
+                            color: AppColors.dialogDivider,
+                          ),
+                          Expanded(
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                splashColor: Colors.red.withOpacity(0.3),
+                                highlightColor: Colors.red.withOpacity(0.1),
+                                onTap: () async {
+                                  await FirebaseAuth.instance.signOut();
+                                  Navigator.of(context).pushAndRemoveUntil(
+                                    MaterialPageRoute(builder: (context) => const LoginScreen()),
+                                        (Route<dynamic> route) => false,
+                                  );
+                                },
+                                child: Container(
+                                  alignment: Alignment.center,
+                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  child: const Text(
+                                    'Yes',
+                                    style: TextStyle(
+                                      color: Colors.red,
+                                      fontSize: 16,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -946,96 +916,12 @@ class _AccountScreenState extends State<AccountScreen>
       transitionBuilder: (context, animation, secondaryAnimation, child) {
         return FadeTransition(opacity: animation, child: child);
       },
-    );
-  }
-
-  Widget _buildSettingsSection(AppLocalizations appLocalizations) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          appLocalizations.settings,
-          style: GoogleFonts.roboto(
-            color: _isDarkTheme ? Colors.white : Colors.black,
-            fontSize: screenWidth * 0.05,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        SizedBox(height: screenHeight * 0.01),
-        Text(
-          appLocalizations.accessSettingsDescription,
-          style: GoogleFonts.roboto(
-            color: _isDarkTheme ? Colors.white70 : Colors.black87,
-            fontSize: screenWidth * 0.035,
-          ),
-        ),
-        SizedBox(height: screenHeight * 0.02),
-        Container(
-          decoration: BoxDecoration(
-            color: _isDarkTheme ? Colors.grey[900] : Colors.grey[200],
-            borderRadius: BorderRadius.circular(12.0),
-          ),
-          child: Column(
-            children: [
-              _buildSettingsButton(
-                appLocalizations.help,
-                Icon(
-                  Icons.help_outline,
-                  color: _isDarkTheme ? Colors.white : Colors.black,
-                  size: screenWidth * 0.05,
-                ),
-                _launchHelp,
-              ),
-              _buildDivider(),
-              _buildSettingsButton(
-                appLocalizations.shareApp,
-                SvgPicture.asset(
-                  'assets/share.svg',
-                  width: screenWidth * 0.05,
-                  height: screenWidth * 0.05,
-                  color: _isDarkTheme ? Colors.white : Colors.black,
-                ),
-                _shareApp, // Updated from _showComingSoonMessage to _shareApp
-              ),
-              _buildDivider(),
-              _buildSettingsButton(
-                appLocalizations.rateUs,
-                SvgPicture.asset(
-                  'assets/star.svg',
-                  width: screenWidth * 0.05,
-                  height: screenWidth * 0.05,
-                  color: _isDarkTheme ? Colors.white : Colors.black,
-                ),
-                _launchRateUs,
-              ),
-              _buildDivider(),
-              _buildSettingsButton(
-                appLocalizations.termsOfUse,
-                Icon(
-                  Icons.article,
-                  color: _isDarkTheme ? Colors.white : Colors.black,
-                  size: screenWidth * 0.05,
-                ),
-                    () => _showTermsOfUse(context),
-              ),
-              _buildDivider(),
-              _buildSettingsButton(
-                appLocalizations.privacyPolicy,
-                Icon(
-                  Icons.privacy_tip,
-                  color: _isDarkTheme ? Colors.white : Colors.black,
-                  size: screenWidth * 0.05,
-                ),
-                    () => _showPrivacyPolicy(context),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
+    ).then((_) {
+      SystemChrome.setSystemUIOverlayStyle(
+        SystemUiOverlayStyle(systemNavigationBarColor: AppColors.opposedPrimaryColor),
+      );
+      setState(() => _isDialogOpen = false);
+    });
   }
 
   Future<void> _shareApp() async {
@@ -1055,7 +941,6 @@ class _AccountScreenState extends State<AccountScreen>
     }
   }
 
-
   Future<void> _launchURL(String url) async {
     final Uri _url = Uri.parse(url);
     if (!await launchUrl(_url, mode: LaunchMode.externalApplication)) {
@@ -1073,10 +958,8 @@ class _AccountScreenState extends State<AccountScreen>
 
   void _showTermsOfUse(BuildContext context) {
     final localizations = AppLocalizations.of(context)!;
-    final isDarkTheme =
-        Provider.of<ThemeProvider>(context, listen: false).isDarkTheme;
-    final backgroundColor = isDarkTheme ? const Color(0xFF191919) : Colors.white;
-    final textColor = isDarkTheme ? Colors.white : Colors.black;
+    final backgroundColor = AppColors.background;
+    final textColor = AppColors.primaryColor;
 
     showModalBottomSheet(
       context: context,
@@ -1160,10 +1043,8 @@ class _AccountScreenState extends State<AccountScreen>
 
   void _showPrivacyPolicy(BuildContext context) {
     final localizations = AppLocalizations.of(context)!;
-    final isDarkTheme =
-        Provider.of<ThemeProvider>(context, listen: false).isDarkTheme;
-    final backgroundColor = isDarkTheme ? const Color(0xFF191919) : Colors.white;
-    final textColor = isDarkTheme ? Colors.white : Colors.black;
+    final backgroundColor = AppColors.background;
+    final textColor = AppColors.primaryColor;
 
     showModalBottomSheet(
       context: context,
@@ -1221,56 +1102,179 @@ class _AccountScreenState extends State<AccountScreen>
     );
   }
 
-  Widget _buildSettingsButton(String text, Widget icon, VoidCallback onPressed) {
+  Widget _buildSettingsButton(
+      String text,
+      Widget icon,
+      VoidCallback onPressed, {
+        BorderRadius? customBorderRadius,
+      }) {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
-    return GestureDetector(
-      onTap: onPressed,
-      child: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: screenWidth * 0.04,
-          vertical: screenHeight * 0.02,
-        ),
-        decoration: BoxDecoration(
-          color: _isDarkTheme ? Colors.grey[900] : Colors.grey[200],
-          borderRadius: BorderRadius.circular(12.0),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Row(
-              children: [
-                icon,
-                SizedBox(width: screenWidth * 0.04),
-                Text(
-                  text,
-                  style: GoogleFonts.roboto(
-                    color: _isDarkTheme ? Colors.white : Colors.black,
-                    fontSize: screenWidth * 0.04,
-                    fontWeight: FontWeight.w500,
+    return Material(
+      color: AppColors.secondaryColor,
+      borderRadius: customBorderRadius ?? BorderRadius.zero,
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: customBorderRadius ?? BorderRadius.zero,
+        splashColor: AppColors.opposedPrimaryColor.withOpacity(0.1),
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: screenWidth * 0.04,
+            vertical: screenHeight * 0.02,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  icon,
+                  SizedBox(width: screenWidth * 0.04),
+                  Text(
+                    text,
+                    style: GoogleFonts.roboto(
+                      color: AppColors.opposedPrimaryColor,
+                      fontSize: screenWidth * 0.04,
+                      fontWeight: FontWeight.w500,
+                    ),
                   ),
-                ),
-              ],
-            ),
-            Icon(
-              Icons.arrow_forward_ios,
-              color: _isDarkTheme ? Colors.white54 : Colors.black54,
-              size: screenWidth * 0.04,
-            ),
-          ],
+                ],
+              ),
+              Icon(
+                Icons.arrow_forward_ios,
+                color: AppColors.opposedPrimaryColor,
+                size: screenWidth * 0.04,
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
+  Widget _buildSettingsSection(AppLocalizations appLocalizations) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          appLocalizations.settings,
+          style: GoogleFonts.roboto(
+            color: AppColors.opposedPrimaryColor,
+            fontSize: screenWidth * 0.05,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        SizedBox(height: screenHeight * 0.01),
+        Text(
+          appLocalizations.accessSettingsDescription,
+          style: GoogleFonts.roboto(
+            color: AppColors.quinaryColor,
+            fontSize: screenWidth * 0.035,
+          ),
+        ),
+        SizedBox(height: screenHeight * 0.02),
+        Column(
+          children: [
+            _buildSettingsButton(
+              appLocalizations.help,
+              Icon(
+                Icons.help_outline,
+                color: AppColors.opposedPrimaryColor,
+                size: screenWidth * 0.05,
+              ),
+              _launchHelp,
+              customBorderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(12),
+                topRight: Radius.circular(12),
+              ),
+            ),
+            _buildDivider(),
+            _buildSettingsButton(
+              appLocalizations.shareApp,
+              SvgPicture.asset(
+                'assets/share.svg',
+                width: screenWidth * 0.05,
+                height: screenWidth * 0.05,
+                color: AppColors.opposedPrimaryColor,
+              ),
+              _shareApp,
+              customBorderRadius: BorderRadius.zero,
+            ),
+            _buildDivider(),
+            _buildSettingsButton(
+              appLocalizations.rateUs,
+              SvgPicture.asset(
+                'assets/star.svg',
+                width: screenWidth * 0.05,
+                height: screenWidth * 0.05,
+                color: AppColors.opposedPrimaryColor,
+              ),
+              _launchRateUs,
+              customBorderRadius: BorderRadius.zero,
+            ),
+            _buildDivider(),
+            _buildSettingsButton(
+              appLocalizations.termsOfUse,
+              Icon(
+                Icons.article,
+                color: AppColors.opposedPrimaryColor,
+                size: screenWidth * 0.05,
+              ),
+                  () => _showTermsOfUse(context),
+              customBorderRadius: BorderRadius.zero,
+            ),
+            _buildDivider(),
+            _buildSettingsButton(
+              appLocalizations.privacyPolicy,
+              Icon(
+                Icons.privacy_tip,
+                color: AppColors.opposedPrimaryColor,
+                size: screenWidth * 0.05,
+              ),
+                  () => _showPrivacyPolicy(context),
+            ),
+            _buildDivider(),
+            _buildSettingsButton(
+              appLocalizations.copyrights,
+              SvgPicture.asset(
+                'assets/copyrights.svg',
+                width: screenWidth * 0.05,
+                height: screenWidth * 0.05,
+                color: AppColors.opposedPrimaryColor,
+              ),
+                  () => _showComingSoonMessage(),
+              customBorderRadius: const BorderRadius.only(
+                bottomLeft: Radius.circular(12),
+                bottomRight: Radius.circular(12),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
   Widget _buildDivider() {
     final screenWidth = MediaQuery.of(context).size.width;
-
     return Divider(
-      color: _isDarkTheme ? Colors.grey[700] : Colors.grey[300],
-      thickness: screenWidth * 0.002, // ~0.7-1 px civarı
+      color: AppColors.dialogDivider,
+      thickness: screenWidth * 0.002,
       height: screenWidth * 0.002,
+    );
+  }
+
+  void _showComingSoonMessage() {
+    final notificationService =
+    Provider.of<NotificationService>(context, listen: false);
+
+    notificationService.showNotification(
+      message: AppLocalizations.of(context)!.comingSoon,
+      bottomOffset: 0.01,
+      duration: Duration(seconds: 1),
     );
   }
 
@@ -1283,34 +1287,37 @@ class _AccountScreenState extends State<AccountScreen>
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
-    return GestureDetector(
-      onTap: onPressed,
-      child: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: screenWidth * 0.04,
-          vertical: screenHeight * 0.02,
-        ),
-        decoration: BoxDecoration(
-          color: _isDarkTheme ? Colors.grey[900] : Colors.grey[200],
-          borderRadius: BorderRadius.circular(10.0),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              text,
-              style: GoogleFonts.roboto(
-                color: _isDarkTheme ? Colors.white : Colors.black,
-                fontSize: screenWidth * 0.041111,
-                fontWeight: FontWeight.w500,
+    return Material(
+      color: AppColors.secondaryColor,
+      borderRadius: BorderRadius.circular(10.0),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(10.0),
+        splashColor: AppColors.shadow,
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: screenWidth * 0.04,
+            vertical: screenHeight * 0.02,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                text,
+                style: GoogleFonts.roboto(
+                  color: AppColors.opposedPrimaryColor,
+                  fontSize: screenWidth * 0.041111,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
-            ),
-            Icon(
-              Icons.arrow_forward_ios,
-              color: _isDarkTheme ? Colors.white54 : Colors.black54,
-              size: screenWidth * 0.04,
-            ),
-          ],
+              Icon(
+                Icons.arrow_forward_ios,
+                color: AppColors.opposedPrimaryColor,
+                size: screenWidth * 0.04,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1326,7 +1333,7 @@ class _AccountScreenState extends State<AccountScreen>
         Text(
           appLocalizations.language,
           style: GoogleFonts.roboto(
-            color: _isDarkTheme ? Colors.white : Colors.black,
+            color: AppColors.opposedPrimaryColor,
             fontSize: screenWidth * 0.05,
             fontWeight: FontWeight.w600,
           ),
@@ -1334,43 +1341,29 @@ class _AccountScreenState extends State<AccountScreen>
         SizedBox(height: screenHeight * 0.01),
         Text(
           appLocalizations.languageDescription,
-          style: GoogleFonts.roboto(
-            color: _isDarkTheme ? Colors.white70 : Colors.black87,
-            fontSize: screenWidth * 0.035,
-          ),
+          style: GoogleFonts.roboto(color: AppColors.quinaryColor, fontSize: screenWidth * 0.035),
         ),
         SizedBox(height: screenHeight * 0.02),
-        GestureDetector(
-          onTap: () {
-            _showLanguageSelectionDialog();
-          },
-          child: Container(
-            padding: EdgeInsets.symmetric(
-              vertical: screenHeight * 0.015,
-              horizontal: screenWidth * 0.04,
-            ),
-            decoration: BoxDecoration(
-              color: _isDarkTheme ? Colors.grey[900] : Colors.grey[200],
-              borderRadius: BorderRadius.circular(10.0),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  _selectedLanguageCode == 'en'
-                      ? appLocalizations.english
-                      : appLocalizations.turkish,
-                  style: GoogleFonts.roboto(
-                    color: _isDarkTheme ? Colors.white : Colors.black,
-                    fontSize: screenWidth * 0.04,
+        Material(
+          color: AppColors.secondaryColor,
+          borderRadius: BorderRadius.circular(10.0),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: _showLanguageSelectionDialog,
+            borderRadius: BorderRadius.circular(10.0),
+            splashColor: AppColors.shadow,
+            child: Container(
+              padding: EdgeInsets.symmetric(vertical: screenHeight * 0.015, horizontal: screenWidth * 0.04),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    _selectedLanguageCode == 'en' ? appLocalizations.english : appLocalizations.turkish,
+                    style: GoogleFonts.roboto(color: AppColors.opposedPrimaryColor, fontSize: screenWidth * 0.04),
                   ),
-                ),
-                Icon(
-                  Icons.arrow_forward_ios,
-                  color: _isDarkTheme ? Colors.white54 : Colors.black54,
-                  size: screenWidth * 0.04,
-                ),
-              ],
+                  Icon(Icons.arrow_forward_ios, color: AppColors.opposedPrimaryColor, size: screenWidth * 0.04),
+                ],
+              ),
             ),
           ),
         ),
@@ -1378,35 +1371,26 @@ class _AccountScreenState extends State<AccountScreen>
     );
   }
 
+
   Future<void> _showLanguageSelectionDialog() async {
     final appLocalizations = AppLocalizations.of(context)!;
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
-
     final languages = [
       {'code': 'en', 'name': appLocalizations.english},
       {'code': 'tr', 'name': appLocalizations.turkish},
       {'code': 'zh', 'name': appLocalizations.chinese + " (Beta)"},
-      {'code': 'hi', 'name': appLocalizations.indian + " (Beta)"},
-      {'code': 'ar', 'name': appLocalizations.arabic + " (Beta)"},
       {'code': 'fr', 'name': appLocalizations.french + " (Beta)"},
-      {'code': 'it', 'name': appLocalizations.italian + " (Beta)"},
-      {'code': 'es', 'name': appLocalizations.spanish + " (Beta)"},
-      {'code': 'ja', 'name': appLocalizations.japanese + " (Beta)"},
-      {'code': 'ko', 'name': appLocalizations.korean + " (Beta)"},
-      {'code': 'az', 'name': appLocalizations.azerbaijanTurkish + " (Beta)"},
-      {'code': 'de', 'name': appLocalizations.deutsch + " (Beta)"},
     ];
 
     String tempSelectedLanguageCode = _selectedLanguageCode;
-
-    // Yaklaşık her bir dil satırının yüksekliği; örneğin ekran yüksekliğinin %7'si.
     final double itemHeight = screenHeight * 0.07;
-    // Eğer dil sayısı 5'ten fazlaysa maksimum 5 satır yüksekliğinde bir alan; aksi halde, toplam öğe yüksekliği.
-    final double maxListHeight =
-    languages.length > 5 ? 5 * itemHeight : languages.length * itemHeight;
+    final double maxListHeight = languages.length > 5 ? 5 * itemHeight : languages.length * itemHeight;
 
-    showGeneralDialog(
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(systemNavigationBarColor: AppColors.background),
+    );
+    await showGeneralDialog(
       context: context,
       barrierDismissible: true,
       barrierLabel: 'LanguageSelection',
@@ -1418,49 +1402,37 @@ class _AccountScreenState extends State<AccountScreen>
             child: Container(
               width: screenWidth * 0.70,
               decoration: BoxDecoration(
-                color: _isDarkTheme ? const Color(0xFF191919) : Colors.white,
+                color: AppColors.dialogColor,
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: StatefulBuilder(
-                builder: (ctx, setState) {
-                  return Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: screenWidth * 0.02,
-                      vertical: screenHeight * 0.002,
-                    ),
-                    child: Column(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: StatefulBuilder(
+                  builder: (ctx, setState) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        SizedBox(height: screenHeight * 0.01),
-                        Column(
-                          children: [
-                            SvgPicture.asset(
-                              'assets/language.svg',
-                              width: screenWidth * 0.06,
-                              height: screenWidth * 0.06,
-                              color: _isDarkTheme ? Colors.white : Colors.black,
-                            ),
-                            SizedBox(height: screenHeight * 0.008),
-                            Text(
-                              appLocalizations.language,
-                              style: TextStyle(
-                                fontSize: screenWidth * 0.04,
-                                fontWeight: FontWeight.bold,
-                                color: _isDarkTheme ? Colors.white : Colors.black,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                            Divider(
-                              thickness: 0.5,
-                              color: _isDarkTheme ? Colors.white30 : Colors.black26,
-                            ),
-                          ],
+                        SizedBox(height: screenHeight * 0.02),
+                        SvgPicture.asset(
+                          'assets/language.svg',
+                          width: screenWidth * 0.06,
+                          height: screenWidth * 0.06,
+                          color: AppColors.opposedPrimaryColor,
                         ),
-                        // Dil seçenekleri: Listeyi sabit maksimum yüksekliğe sığdırıyoruz
-                        Container(
-                          constraints: BoxConstraints(
-                            maxHeight: maxListHeight,
+                        SizedBox(height: screenHeight * 0.008),
+                        Text(
+                          appLocalizations.language,
+                          style: TextStyle(
+                            fontSize: screenWidth * 0.04,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.opposedPrimaryColor,
                           ),
+                          textAlign: TextAlign.center,
+                        ),
+                        Divider(thickness: 0.5, color: AppColors.dialogDivider),
+                        Container(
+                          constraints: BoxConstraints(maxHeight: maxListHeight),
                           child: ListView.builder(
                             shrinkWrap: true,
                             padding: EdgeInsets.zero,
@@ -1475,9 +1447,7 @@ class _AccountScreenState extends State<AccountScreen>
                                 },
                                 child: Container(
                                   color: Colors.transparent,
-                                  padding: EdgeInsets.symmetric(
-                                    vertical: screenHeight * 0.005,
-                                  ),
+                                  padding: EdgeInsets.symmetric(vertical: screenHeight * 0.005),
                                   child: Row(
                                     children: [
                                       Radio<String>(
@@ -1495,7 +1465,7 @@ class _AccountScreenState extends State<AccountScreen>
                                           lang['name']!,
                                           style: TextStyle(
                                             fontSize: screenWidth * 0.035,
-                                            color: _isDarkTheme ? Colors.white : Colors.black,
+                                            color: AppColors.opposedPrimaryColor,
                                           ),
                                         ),
                                       ),
@@ -1506,50 +1476,44 @@ class _AccountScreenState extends State<AccountScreen>
                             },
                           ),
                         ),
-                        Divider(
-                          height: screenHeight * 0.002,
-                          color: _isDarkTheme ? Colors.white30 : Colors.black26,
-                          thickness: 0.5,
-                        ),
-                        IntrinsicHeight(
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: TextButton(
-                                  onPressed: () {
-                                    _changeLanguage(tempSelectedLanguageCode);
-                                    Navigator.of(context).pop();
-                                  },
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: Colors.blue,
-                                    padding: const EdgeInsets.symmetric(vertical: 2),
-                                  ),
-                                  child: Text(
-                                    appLocalizations.done,
-                                    style: TextStyle(
-                                      fontSize: screenWidth * 0.035,
-                                      color: _isDarkTheme ? Colors.blue : Colors.blue[800],
-                                    ),
-                                  ),
-                                ),
+                        Divider(thickness: 0.5, color: AppColors.dialogDivider, height: 1),
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            splashColor: AppColors.senaryColor.withOpacity(0.1),
+                            highlightColor: AppColors.senaryColor.withOpacity(0.1),
+                            onTap: () {
+                              _changeLanguage(tempSelectedLanguageCode);
+                              Navigator.of(context).pop();
+                            },
+                            child: Container(
+                              height: screenHeight * 0.06,
+                              alignment: Alignment.center,
+                              child: Text(
+                                appLocalizations.done,
+                                style: TextStyle(fontSize: screenWidth * 0.035, color: AppColors.senaryColor),
                               ),
-                            ],
+                            ),
                           ),
                         ),
                       ],
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
             ),
           ),
         );
       },
-      transitionBuilder: (context, animation, secondaryAnimation, child) {
-        return FadeTransition(opacity: animation, child: child);
-      },
-    );
+      transitionBuilder: (context, animation, secondaryAnimation, child) =>
+          FadeTransition(opacity: animation, child: child),
+    ).then((_) {
+      SystemChrome.setSystemUIOverlayStyle(
+        SystemUiOverlayStyle(systemNavigationBarColor: AppColors.background),
+      );
+    });
   }
+
 
   Widget _buildThemeSelection(AppLocalizations appLocalizations) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -1561,7 +1525,7 @@ class _AccountScreenState extends State<AccountScreen>
         Text(
           appLocalizations.theme,
           style: GoogleFonts.roboto(
-            color: _isDarkTheme ? Colors.white : Colors.black,
+            color: AppColors.opposedPrimaryColor,
             fontSize: screenWidth * 0.05,
             fontWeight: FontWeight.w600,
           ),
@@ -1569,41 +1533,35 @@ class _AccountScreenState extends State<AccountScreen>
         SizedBox(height: screenHeight * 0.01),
         Text(
           appLocalizations.themeDescription,
-          style: GoogleFonts.roboto(
-            color: _isDarkTheme ? Colors.white70 : Colors.black87,
-            fontSize: screenWidth * 0.035,
-          ),
+          style: GoogleFonts.roboto(color: AppColors.quinaryColor, fontSize: screenWidth * 0.035),
         ),
         SizedBox(height: screenHeight * 0.02),
-        GestureDetector(
-          onTap: () {
-            _showThemeSelectionDialog(appLocalizations);
-          },
-          child: Container(
-            padding: EdgeInsets.symmetric(
-              vertical: screenHeight * 0.015,
-              horizontal: screenWidth * 0.04,
-            ),
-            decoration: BoxDecoration(
-              color: _isDarkTheme ? Colors.grey[900] : Colors.grey[200],
-              borderRadius: BorderRadius.circular(10.0),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  _isDarkTheme ? appLocalizations.dark : appLocalizations.light,
-                  style: GoogleFonts.roboto(
-                    color: _isDarkTheme ? Colors.white : Colors.black,
-                    fontSize: screenWidth * 0.04,
+        Material(
+          color: AppColors.secondaryColor,
+          borderRadius: BorderRadius.circular(10.0),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () {
+              _showThemeSelectionDialog(appLocalizations);
+            },
+            borderRadius: BorderRadius.circular(10.0),
+            splashColor: AppColors.shadow,
+            child: Container(
+              padding: EdgeInsets.symmetric(vertical: screenHeight * 0.015, horizontal: screenWidth * 0.04),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    AppColors.currentTheme == 'dark'
+                        ? appLocalizations.dark
+                        : AppColors.currentTheme == 'love'
+                        ? appLocalizations.love
+                        : appLocalizations.light,
+                    style: GoogleFonts.roboto(color: AppColors.opposedPrimaryColor, fontSize: screenWidth * 0.04),
                   ),
-                ),
-                Icon(
-                  Icons.arrow_forward_ios,
-                  color: _isDarkTheme ? Colors.white54 : Colors.black54,
-                  size: screenWidth * 0.04,
-                ),
-              ],
+                  Icon(Icons.arrow_forward_ios, color: AppColors.opposedPrimaryColor, size: screenWidth * 0.04),
+                ],
+              ),
             ),
           ),
         ),
@@ -1612,19 +1570,20 @@ class _AccountScreenState extends State<AccountScreen>
   }
 
   Future<void> _showThemeSelectionDialog(AppLocalizations appLocalizations) async {
-    // Remove redundant AppLocalizations instantiation if necessary
-    // final appLocalizations = AppLocalizations.of(context)!;
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
+    bool loveThemeEnabled = (_hasCortexSubscription >= 1 && _hasCortexSubscription <= 6);
 
     final themes = [
-      {'code': 'light', 'name': appLocalizations.light},
-      {'code': 'dark', 'name': appLocalizations.dark},
+      {'code': 'light', 'name': appLocalizations.light, 'enabled': true},
+      {'code': 'dark', 'name': appLocalizations.dark, 'enabled': true},
+      {'code': 'love', 'name': appLocalizations.love, 'enabled': loveThemeEnabled},
     ];
 
-    String tempSelectedTheme = _isDarkTheme ? 'dark' : 'light';
+    String tempSelectedTheme =
+        Provider.of<ThemeProvider>(context, listen: false).currentTheme;
 
-    showGeneralDialog(
+    await showGeneralDialog(
       context: context,
       barrierDismissible: true,
       barrierLabel: 'ThemeSelection',
@@ -1636,86 +1595,99 @@ class _AccountScreenState extends State<AccountScreen>
             child: Container(
               width: screenWidth * 0.70,
               decoration: BoxDecoration(
-                color: _isDarkTheme ? const Color(0xFF191919) : Colors.white,
+                color: AppColors.dialogColor,
                 borderRadius: BorderRadius.circular(16),
               ),
-              child: StatefulBuilder(
-                builder: (ctx, setState) {
-                  return Padding(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: screenWidth * 0.02,
-                      vertical: screenHeight * 0.01, // Reduced vertical padding
-                    ),
-                    child: Column(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: StatefulBuilder(
+                  builder: (ctx, setState) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Column(
-                          children: [
-                            SvgPicture.asset(
-                              'assets/theme.svg',
-                              width: screenWidth * 0.08,
-                              height: screenWidth * 0.08,
-                              color: _isDarkTheme ? Colors.white : Colors.black,
-                            ),
-                            SizedBox(height: screenHeight * 0.008),
-                            Text(
-                              appLocalizations.theme,
-                              style: TextStyle(
-                                fontSize: screenWidth * 0.04,
-                                fontWeight: FontWeight.bold,
-                                color: _isDarkTheme ? Colors.white : Colors.black,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                            Divider(
-                              thickness: 0.5,
-                              color: _isDarkTheme ? Colors.white30 : Colors.black26,
-                            ),
-                          ],
+                        SizedBox(height: screenHeight * 0.02),
+                        SvgPicture.asset(
+                          'assets/theme.svg',
+                          width: screenWidth * 0.08,
+                          height: screenWidth * 0.08,
+                          color: AppColors.opposedPrimaryColor,
                         ),
-
-                        // Tema Seçenekleri
-                        ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxHeight: screenHeight * 0.3,
+                        SizedBox(height: screenHeight * 0.008),
+                        Text(
+                          appLocalizations.theme,
+                          style: TextStyle(
+                            fontSize: screenWidth * 0.04,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.opposedPrimaryColor,
                           ),
-                          child: ListView.builder(
+                          textAlign: TextAlign.center,
+                        ),
+                        Divider(thickness: 0.5, color: AppColors.dialogDivider),
+                        ConstrainedBox(
+                          constraints: BoxConstraints(maxHeight: screenHeight * 0.3),
+                          child: ListView.separated(
                             shrinkWrap: true,
                             padding: EdgeInsets.zero,
                             itemCount: themes.length,
+                            separatorBuilder: (context, index) =>
+                                SizedBox(height: screenHeight * 0.01),
                             itemBuilder: (context, index) {
                               final theme = themes[index];
+                              bool isEnabled = theme['enabled'] as bool;
+                              bool isLoveTheme = (theme['code'] as String) == 'love';
+
+                              Widget leadingWidget;
+                              if (isLoveTheme && !isEnabled) {
+                                leadingWidget = SvgPicture.asset(
+                                  'assets/lock.svg',
+                                  width: screenWidth * 0.05,
+                                  height: screenWidth * 0.05,
+                                  color: AppColors.opposedPrimaryColor,
+                                );
+                              } else {
+                                leadingWidget = Radio<String>(
+                                  value: theme['code'] as String,
+                                  groupValue: tempSelectedTheme,
+                                  onChanged: isEnabled
+                                      ? (value) {
+                                    setState(() {
+                                      tempSelectedTheme = value!;
+                                    });
+                                  }
+                                      : null,
+                                );
+                              }
+
                               return GestureDetector(
-                                onTap: () {
+                                onTap: isEnabled
+                                    ? () {
                                   setState(() {
-                                    tempSelectedTheme = theme['code']!;
+                                    tempSelectedTheme = theme['code'] as String;
                                   });
-                                },
+                                }
+                                    : null,
                                 child: Container(
+                                  height: screenHeight * 0.065,
                                   color: Colors.transparent,
-                                  padding: EdgeInsets.symmetric(
-                                    vertical: screenHeight * 0.005,
+                                  padding: EdgeInsets.only(
+                                    left: screenWidth * 0.02,
+                                    right: screenWidth * 0.04,
                                   ),
                                   child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.center,
                                     children: [
-                                      Radio<String>(
-                                        value: theme['code']!,
-                                        groupValue: tempSelectedTheme,
-                                        onChanged: (value) {
-                                          setState(() {
-                                            tempSelectedTheme = value!;
-                                          });
-                                        },
+                                      SizedBox(
+                                        width: screenWidth * 0.1,
+                                        child: Center(child: leadingWidget),
                                       ),
                                       SizedBox(width: screenWidth * 0.02),
                                       Expanded(
                                         child: Text(
-                                          theme['name']!,
+                                          theme['name'] as String,
                                           style: TextStyle(
                                             fontSize: screenWidth * 0.035,
-                                            color: _isDarkTheme
-                                                ? Colors.white
-                                                : Colors.black,
+                                            color: AppColors.opposedPrimaryColor,
                                           ),
                                         ),
                                       ),
@@ -1726,56 +1698,45 @@ class _AccountScreenState extends State<AccountScreen>
                             },
                           ),
                         ),
-                        Divider(
-                          height: screenHeight * 0.002, // Reduced height
-                          color: _isDarkTheme ? Colors.white30 : Colors.black26,
-                          thickness: 0.5,
-                        ),
-
-                        // Tamamla Butonu
-                        IntrinsicHeight(
-                          child: Row(
-                            children: [
-                              Expanded(
-                                child: TextButton(
-                                  onPressed: () {
-                                    _changeTheme(tempSelectedTheme);
-                                    Navigator.of(context).pop();
-                                  },
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: Colors.blue,
-                                    padding: const EdgeInsets.symmetric(
-                                      vertical: 0, // Reduced padding
-                                    ),
-                                  ),
-                                  child: Text(
-                                    appLocalizations.done,
-                                    style: TextStyle(
-                                      fontSize: screenWidth * 0.035,
-                                      color: _isDarkTheme
-                                          ? Colors.blue
-                                          : Colors.blue[800],
-                                    ),
-                                  ),
+                        Divider(thickness: 0.5, color: AppColors.dialogDivider, height: 1),
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            splashColor: AppColors.senaryColor.withOpacity(0.1),
+                            highlightColor: AppColors.senaryColor.withOpacity(0.1),
+                            onTap: () {
+                              if (tempSelectedTheme == 'love' && !loveThemeEnabled) return;
+                              Provider.of<ThemeProvider>(context, listen: false)
+                                  .changeTheme(tempSelectedTheme);
+                              Navigator.of(context).pop();
+                            },
+                            child: Container(
+                              height: screenHeight * 0.06,
+                              alignment: Alignment.center,
+                              child: Text(
+                                appLocalizations.done,
+                                style: TextStyle(
+                                  fontSize: screenWidth * 0.035,
+                                  color: AppColors.senaryColor,
                                 ),
                               ),
-                            ],
+                            ),
                           ),
                         ),
                       ],
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
             ),
           ),
         );
       },
-      transitionBuilder: (context, animation, secondaryAnimation, child) {
-        return FadeTransition(opacity: animation, child: child);
-      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) =>
+          FadeTransition(opacity: animation, child: child),
     );
   }
+
 
   Widget _buildDeleteSection(AppLocalizations appLocalizations) {
     final screenWidth = MediaQuery.of(context).size.width;
@@ -1787,7 +1748,7 @@ class _AccountScreenState extends State<AccountScreen>
         Text(
           appLocalizations.delete,
           style: GoogleFonts.roboto(
-            color: _isDarkTheme ? Colors.white : Colors.black,
+            color: AppColors.opposedPrimaryColor,
             fontSize: screenWidth * 0.05,
             fontWeight: FontWeight.w600,
           ),
@@ -1795,17 +1756,11 @@ class _AccountScreenState extends State<AccountScreen>
         SizedBox(height: screenHeight * 0.01),
         Text(
           appLocalizations.deleteDescription,
-          style: GoogleFonts.roboto(
-            color: _isDarkTheme ? Colors.white70 : Colors.black87,
-            fontSize: screenWidth * 0.035,
-          ),
+          style: GoogleFonts.roboto(color: AppColors.quinaryColor, fontSize: screenWidth * 0.035),
         ),
         SizedBox(height: screenHeight * 0.02),
-
-        // <<--- NEW BUTTON for "Delete All Chats" added here
         _buildDeleteAllConversationsButton(appLocalizations),
         SizedBox(height: screenHeight * 0.015),
-
         _buildDeleteAccountButton(appLocalizations),
       ],
     );
@@ -1813,12 +1768,16 @@ class _AccountScreenState extends State<AccountScreen>
 
   Future<void> _showDeleteAllConversationsDialog(AppLocalizations appLocalizations) async {
     if (_isDialogOpen) return;
-    setState(() { _isDialogOpen = true; });
+    setState(() => _isDialogOpen = true);
+
     final prefs = await SharedPreferences.getInstance();
     final TextEditingController confirmController = TextEditingController();
     String? confirmError;
 
-    showGeneralDialog(
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(systemNavigationBarColor: AppColors.background),
+    );
+    await showGeneralDialog(
       context: context,
       barrierDismissible: true,
       barrierLabel: 'DeleteAllConversations',
@@ -1830,162 +1789,164 @@ class _AccountScreenState extends State<AccountScreen>
             child: Container(
               width: MediaQuery.of(ctx).size.width * 0.8,
               decoration: BoxDecoration(
-                color: _isDarkTheme ? const Color(0xFF191919) : Colors.white,
+                color: AppColors.dialogColor,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: StatefulBuilder(
-                builder: (context, setState) {
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Başlık, mesaj ve input alanı
-                      Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              appLocalizations.deleteAllConversationsConfirmTitle,
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: _isDarkTheme ? Colors.white : Colors.black,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: StatefulBuilder(
+                  builder: (context, setState) {
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                appLocalizations.deleteAllConversationsConfirmTitle,
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.opposedPrimaryColor,
+                                ),
+                                textAlign: TextAlign.center,
                               ),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              appLocalizations.deleteAllConversationsConfirmMessage,
-                              style: TextStyle(
-                                color: _isDarkTheme ? Colors.white70 : Colors.black87,
-                                fontSize: 14,
+                              const SizedBox(height: 12),
+                              Text(
+                                appLocalizations.deleteAllConversationsConfirmMessage,
+                                style: TextStyle(
+                                  color: AppColors.quinaryColor,
+                                  fontSize: 14,
+                                ),
+                                textAlign: TextAlign.center,
                               ),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 20),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                ShakeWidget(
-                                  controller: _deleteAccountPasswordShakeController,
-                                  child: TextField(
-                                    controller: confirmController,
-                                    style: TextStyle(
-                                      color: _isDarkTheme ? Colors.white : Colors.black,
+                              const SizedBox(height: 20),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  ShakeWidget(
+                                    controller: _deleteAccountPasswordShakeController,
+                                    child: TextField(
+                                      controller: confirmController,
+                                      style: TextStyle(color: AppColors.opposedPrimaryColor),
+                                      decoration: InputDecoration(
+                                        labelText: appLocalizations.confirmWord,
+                                        labelStyle: TextStyle(color: AppColors.opposedPrimaryColor),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(color: AppColors.dialogDivider),
+                                          borderRadius: BorderRadius.circular(10.0),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(color: AppColors.opposedPrimaryColor),
+                                          borderRadius: BorderRadius.circular(10.0),
+                                        ),
+                                      ),
                                     ),
-                                    decoration: InputDecoration(
-                                      labelText: appLocalizations.confirmWord,
-                                      labelStyle: TextStyle(
-                                        color: _isDarkTheme ? Colors.white70 : Colors.black87,
+                                  ),
+                                  AnimatedSwitcher(
+                                    duration: const Duration(milliseconds: 300),
+                                    child: confirmError != null
+                                        ? Padding(
+                                      padding: const EdgeInsets.only(top: 8.0),
+                                      child: Text(
+                                        confirmError!,
+                                        style: const TextStyle(color: Colors.red),
+                                        key: ValueKey(confirmError),
                                       ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: _isDarkTheme ? Colors.white54 : Colors.black54,
-                                        ),
-                                        borderRadius: BorderRadius.circular(10.0),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: _isDarkTheme ? Colors.white : Colors.black,
-                                        ),
-                                        borderRadius: BorderRadius.circular(10.0),
+                                    )
+                                        : const SizedBox.shrink(key: ValueKey("empty")),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        Divider(color: AppColors.dialogDivider, thickness: 0.5, height: 1),
+                        IntrinsicHeight(
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    splashColor: AppColors.senaryColor.withOpacity(0.1),
+                                    highlightColor: AppColors.senaryColor.withOpacity(0.1),
+                                    onTap: () => Navigator.of(ctx).pop(),
+                                    child: Container(
+                                      alignment: Alignment.center,
+                                      padding: const EdgeInsets.symmetric(vertical: 16),
+                                      child: Text(
+                                        appLocalizations.cancel,
+                                        style: const TextStyle(color: Colors.blue, fontSize: 16),
                                       ),
                                     ),
                                   ),
                                 ),
-                                // AnimatedSwitcher ile hata mesajı fade-in olarak görünsün:
-                                AnimatedSwitcher(
-                                  duration: const Duration(milliseconds: 300),
-                                  child: confirmError != null
-                                      ? Padding(
-                                    padding: const EdgeInsets.only(top: 8.0),
-                                    child: Text(
-                                      confirmError!,
-                                      style: const TextStyle(color: Colors.red),
-                                      key: ValueKey(confirmError),
+                              ),
+                              VerticalDivider(width: 1, thickness: 0.5, color: AppColors.dialogDivider),
+                              Expanded(
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    splashColor: Colors.red.withOpacity(0.3),
+                                    highlightColor: Colors.red.withOpacity(0.1),
+                                    onTap: () async {
+                                      if (confirmController.text.trim() != "VERTEX") {
+                                        setState(() {
+                                          confirmError = appLocalizations.confirmWordError;
+                                        });
+                                        _deleteAccountPasswordShakeController.forward(from: 0);
+                                        return;
+                                      }
+                                      Navigator.of(ctx).pop();
+                                      final convList = prefs.getStringList('conversations') ?? [];
+                                      for (final conv in convList) {
+                                        final parts = conv.split('|');
+                                        if (parts.isNotEmpty) {
+                                          final conversationID = parts[0];
+                                          await prefs.remove('is_starred_$conversationID');
+                                          await prefs.remove(conversationID);
+                                        }
+                                      }
+                                      await prefs.remove('conversations');
+                                      _notificationService.showNotification(
+                                        message: appLocalizations.allConversationsDeleted,
+                                        isSuccess: true,
+                                        bottomOffset: 0.02,
+                                      );
+                                    },
+                                    child: Container(
+                                      alignment: Alignment.center,
+                                      padding: const EdgeInsets.symmetric(vertical: 16),
+                                      child: Text(
+                                        appLocalizations.deleteAll,
+                                        style: const TextStyle(color: Colors.red, fontSize: 16),
+                                      ),
                                     ),
-                                  )
-                                      : const SizedBox.shrink(key: ValueKey("empty")),
+                                  ),
                                 ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      Divider(
-                        color: _isDarkTheme ? Colors.white30 : Colors.black26,
-                        thickness: 0.5,
-                        height: 1,
-                      ),
-                      // Butonlar
-                      IntrinsicHeight(
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: TextButton(
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Colors.blue,
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
-                                ),
-                                onPressed: () => Navigator.of(ctx).pop(),
-                                child: Text(appLocalizations.cancel),
                               ),
-                            ),
-                            VerticalDivider(
-                              width: 1,
-                              thickness: 0.5,
-                              color: _isDarkTheme ? Colors.white30 : Colors.black26,
-                            ),
-                            Expanded(
-                              child: TextButton(
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Colors.red,
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
-                                ),
-                                onPressed: () async {
-                                  if (confirmController.text.trim() != "VERTEX") {
-                                    setState(() {
-                                      confirmError = appLocalizations.confirmWordError;
-                                    });
-                                    _deleteAccountPasswordShakeController.forward(from: 0);
-                                    return;
-                                  }
-                                  Navigator.of(ctx).pop(); // diyalogu kapat
-                                  final convList = prefs.getStringList('conversations') ?? [];
-                                  for (final conv in convList) {
-                                    final parts = conv.split('|');
-                                    if (parts.isNotEmpty) {
-                                      final conversationID = parts[0];
-                                      await prefs.remove('is_starred_$conversationID');
-                                      await prefs.remove(conversationID);
-                                    }
-                                  }
-                                  await prefs.remove('conversations');
-                                  _notificationService.showNotification(
-                                    message: appLocalizations.allConversationsDeleted,
-                                    isSuccess: true,
-                                    bottomOffset: 0.02,
-                                  );
-                                },
-                                child: Text(appLocalizations.deleteAll),
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  );
-                },
+                      ],
+                    );
+                  },
+                ),
               ),
             ),
           ),
         );
       },
-      transitionBuilder: (context, animation, secondaryAnimation, child) {
-        return FadeTransition(opacity: animation, child: child);
-      },
+      transitionBuilder: (context, animation, secondaryAnimation, child) =>
+          FadeTransition(opacity: animation, child: child),
     ).then((_) {
-      setState(() { _isDialogOpen = false; });
+      SystemChrome.setSystemUIOverlayStyle(
+        SystemUiOverlayStyle(systemNavigationBarColor: AppColors.background),
+      );
+      setState(() => _isDialogOpen = false);
     });
   }
 
@@ -1993,36 +1954,32 @@ class _AccountScreenState extends State<AccountScreen>
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
-    return GestureDetector(
-      onTap: () {
-        _showDeleteAllConversationsDialog(appLocalizations);
-      },
-      child: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: screenWidth * 0.04,
-          vertical: screenHeight * 0.02,
-        ),
-        decoration: BoxDecoration(
-          color: _isDarkTheme ? const Color(0xFFA10000) : const Color(0xFFFF0000),
-          borderRadius: BorderRadius.circular(10.0),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              appLocalizations.deleteAllConversationsButton,
-              style: GoogleFonts.roboto(
-                color: Colors.white,
-                fontSize: screenWidth * 0.04,
-                fontWeight: FontWeight.w500,
+    return Material(
+      color: AppColors.warning,
+      borderRadius: BorderRadius.circular(10.0),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          _showDeleteAllConversationsDialog(appLocalizations);
+        },
+        borderRadius: BorderRadius.circular(10.0),
+        splashColor: AppColors.shadow,
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.04, vertical: screenHeight * 0.02),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                appLocalizations.deleteAllConversationsButton,
+                style: GoogleFonts.roboto(
+                  color: Colors.white,
+                  fontSize: screenWidth * 0.04,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
-            ),
-            Icon(
-              Icons.arrow_forward_ios,
-              color: Colors.white,
-              size: screenWidth * 0.04,
-            ),
-          ],
+              Icon(Icons.arrow_forward_ios, color: Colors.white, size: screenWidth * 0.04),
+            ],
+          ),
         ),
       ),
     );
@@ -2032,36 +1989,32 @@ class _AccountScreenState extends State<AccountScreen>
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
-    return GestureDetector(
-      onTap: () {
-        _showDeleteAccountDialog(appLocalizations);
-      },
-      child: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: screenWidth * 0.04,
-          vertical: screenHeight * 0.02,
-        ),
-        decoration: BoxDecoration(
-          color: _isDarkTheme ? const Color(0xFFA10000) : const Color(0xFFFF0000),
-          borderRadius: BorderRadius.circular(10.0),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              appLocalizations.deleteAccountButton,
-              style: GoogleFonts.roboto(
-                color: Colors.white,
-                fontSize: screenWidth * 0.04,
-                fontWeight: FontWeight.w500,
+    return Material(
+      color: AppColors.warning,
+      borderRadius: BorderRadius.circular(10.0),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          _showDeleteAccountDialog(appLocalizations);
+        },
+        borderRadius: BorderRadius.circular(10.0),
+        splashColor: AppColors.shadow,
+        child: Container(
+          padding: EdgeInsets.symmetric(horizontal: screenWidth * 0.04, vertical: screenHeight * 0.02),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                appLocalizations.deleteAccountButton,
+                style: GoogleFonts.roboto(
+                  color: Colors.white,
+                  fontSize: screenWidth * 0.04,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
-            ),
-            Icon(
-              Icons.arrow_forward_ios,
-              color: Colors.white,
-              size: screenWidth * 0.04,
-            ),
-          ],
+              Icon(Icons.arrow_forward_ios, color: Colors.white, size: screenWidth * 0.04),
+            ],
+          ),
         ),
       ),
     );
@@ -2069,13 +2022,15 @@ class _AccountScreenState extends State<AccountScreen>
 
   Future<void> _showDeleteAccountDialog(AppLocalizations appLocalizations) async {
     if (_isDialogOpen) return;
-    setState(() {
-      _isDialogOpen = true;
-    });
+    setState(() => _isDialogOpen = true);
+
     final TextEditingController passwordController = TextEditingController();
     String? passwordError;
 
-    showGeneralDialog(
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(systemNavigationBarColor: AppColors.background),
+    );
+    await showGeneralDialog(
       context: context,
       barrierDismissible: true,
       barrierLabel: 'DeleteAccount',
@@ -2087,195 +2042,199 @@ class _AccountScreenState extends State<AccountScreen>
             child: Container(
               width: MediaQuery.of(context).size.width * 0.8,
               decoration: BoxDecoration(
-                color: _isDarkTheme ? const Color(0xFF191919) : Colors.white,
+                color: AppColors.dialogColor,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: StatefulBuilder(
-                builder: (context, setState) {
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Başlık, mesaj ve input alanı
-                      Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          children: [
-                            Text(
-                              appLocalizations.confirmDeleteAccount,
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: _isDarkTheme ? Colors.white : Colors.black,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: StatefulBuilder(
+                  builder: (context, setState) {
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            children: [
+                              Text(
+                                appLocalizations.confirmDeleteAccount,
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.opposedPrimaryColor,
+                                ),
+                                textAlign: TextAlign.center,
                               ),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              appLocalizations.enterPasswordToDelete,
-                              style: TextStyle(
-                                color: _isDarkTheme ? Colors.white70 : Colors.black87,
-                                fontSize: 14,
+                              const SizedBox(height: 12),
+                              Text(
+                                appLocalizations.enterPasswordToDelete,
+                                style: TextStyle(
+                                  color: AppColors.quinaryColor,
+                                  fontSize: 14,
+                                ),
+                                textAlign: TextAlign.center,
                               ),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 20),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                ShakeWidget(
-                                  controller: _deleteAccountPasswordShakeController,
-                                  child: TextField(
-                                    controller: passwordController,
-                                    obscureText: true,
-                                    style: TextStyle(
-                                      color: _isDarkTheme ? Colors.white : Colors.black,
+                              const SizedBox(height: 20),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  ShakeWidget(
+                                    controller: _deleteAccountPasswordShakeController,
+                                    child: TextField(
+                                      controller: passwordController,
+                                      obscureText: true,
+                                      style: TextStyle(color: AppColors.opposedPrimaryColor),
+                                      decoration: InputDecoration(
+                                        labelText: appLocalizations.password,
+                                        labelStyle: TextStyle(color: AppColors.opposedPrimaryColor),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(color: AppColors.dialogDivider),
+                                          borderRadius: BorderRadius.circular(10.0),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(color: AppColors.opposedPrimaryColor),
+                                          borderRadius: BorderRadius.circular(10.0),
+                                        ),
+                                      ),
                                     ),
-                                    decoration: InputDecoration(
-                                      labelText: appLocalizations.password,
-                                      labelStyle: TextStyle(
-                                        color: _isDarkTheme ? Colors.white70 : Colors.black87,
+                                  ),
+                                  AnimatedSwitcher(
+                                    duration: const Duration(milliseconds: 300),
+                                    child: passwordError != null
+                                        ? Padding(
+                                      padding: const EdgeInsets.only(top: 8.0),
+                                      child: Text(
+                                        passwordError!,
+                                        style: const TextStyle(color: Colors.red),
+                                        key: ValueKey(passwordError),
                                       ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: _isDarkTheme ? Colors.white54 : Colors.black54,
-                                        ),
-                                        borderRadius: BorderRadius.circular(10.0),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: _isDarkTheme ? Colors.white : Colors.black,
-                                        ),
-                                        borderRadius: BorderRadius.circular(10.0),
+                                    )
+                                        : const SizedBox.shrink(key: ValueKey("empty")),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        Divider(color: AppColors.dialogDivider, thickness: 0.5, height: 1),
+                        IntrinsicHeight(
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    splashColor: AppColors.senaryColor.withOpacity(0.1),
+                                    highlightColor: AppColors.senaryColor.withOpacity(0.1),
+                                    onTap: () => Navigator.of(context).pop(),
+                                    child: Container(
+                                      alignment: Alignment.center,
+                                      padding: const EdgeInsets.symmetric(vertical: 16),
+                                      child: Text(
+                                        appLocalizations.cancel,
+                                        style: const TextStyle(color: Colors.blue, fontSize: 16),
                                       ),
                                     ),
                                   ),
                                 ),
-                                AnimatedSwitcher(
-                                  duration: const Duration(milliseconds: 300),
-                                  child: passwordError != null
-                                      ? Padding(
-                                    padding: const EdgeInsets.only(top: 8.0),
-                                    child: Text(
-                                      passwordError!,
-                                      style: const TextStyle(color: Colors.red),
-                                      key: ValueKey(passwordError),
+                              ),
+                              VerticalDivider(width: 1, thickness: 0.5, color: AppColors.dialogDivider),
+                              Expanded(
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    splashColor: Colors.red.withOpacity(0.3),
+                                    highlightColor: Colors.red.withOpacity(0.1),
+                                    onTap: () async {
+                                      final password = passwordController.text.trim();
+                                      if (password.isEmpty) {
+                                        setState(() {
+                                          passwordError = appLocalizations.passwordRequired;
+                                        });
+                                        _deleteAccountPasswordShakeController.forward(from: 0);
+                                        return;
+                                      }
+                                      final user = FirebaseAuth.instance.currentUser;
+                                      if (user == null) {
+                                        Navigator.of(context).pop();
+                                        return;
+                                      }
+                                      try {
+                                        final credential = EmailAuthProvider.credential(
+                                          email: user.email!,
+                                          password: password,
+                                        );
+                                        await user.reauthenticateWithCredential(credential);
+                                        final batch = FirebaseFirestore.instance.batch();
+                                        final userDocRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+                                        batch.delete(userDocRef);
+
+                                        if (_userData?['username'] != null) {
+                                          final username = _userData!['username'].toString().toLowerCase();
+                                          final usernameDocRef = FirebaseFirestore.instance.collection('usernames').doc(username);
+                                          batch.delete(usernameDocRef);
+                                        }
+                                        await batch.commit();
+                                        await user.delete();
+                                        await FirebaseAuth.instance.signOut();
+                                        if (!mounted) return;
+                                        Navigator.of(context).pushReplacement(
+                                          MaterialPageRoute(builder: (context) => const LoginScreen()),
+                                        );
+                                      } catch (e) {
+                                        debugPrint("Error deleting account: $e");
+                                        setState(() {
+                                          passwordError = appLocalizations.wrongPassword;
+                                        });
+                                        _deleteAccountPasswordShakeController.forward(from: 0);
+                                      }
+                                    },
+                                    child: Container(
+                                      alignment: Alignment.center,
+                                      padding: const EdgeInsets.symmetric(vertical: 16),
+                                      child: Text(
+                                        appLocalizations.delete,
+                                        style: const TextStyle(color: Colors.red, fontSize: 16),
+                                      ),
                                     ),
-                                  )
-                                      : const SizedBox.shrink(key: ValueKey("empty")),
+                                  ),
                                 ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      Divider(
-                        color: _isDarkTheme ? Colors.white30 : Colors.black26,
-                        thickness: 0.5,
-                        height: 1,
-                      ),
-                      // Butonlar
-                      IntrinsicHeight(
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: TextButton(
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Colors.blue,
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
-                                ),
-                                onPressed: () => Navigator.of(context).pop(),
-                                child: Text(appLocalizations.cancel),
                               ),
-                            ),
-                            VerticalDivider(
-                              width: 1,
-                              thickness: 0.5,
-                              color: _isDarkTheme ? Colors.white30 : Colors.black26,
-                            ),
-                            Expanded(
-                              child: TextButton(
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Colors.red,
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
-                                ),
-                                onPressed: () async {
-                                  final password = passwordController.text.trim();
-                                  if (password.isEmpty) {
-                                    setState(() {
-                                      passwordError = appLocalizations.passwordRequired;
-                                    });
-                                    _deleteAccountPasswordShakeController.forward(from: 0);
-                                    return;
-                                  }
-                                  final user = FirebaseAuth.instance.currentUser;
-                                  if (user == null) {
-                                    Navigator.of(context).pop();
-                                    return;
-                                  }
-                                  try {
-                                    final credential = EmailAuthProvider.credential(
-                                      email: user.email!,
-                                      password: password,
-                                    );
-                                    await user.reauthenticateWithCredential(credential);
-                                    final batch = FirebaseFirestore.instance.batch();
-                                    final userDocRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-                                    batch.delete(userDocRef);
-                                    if (_userData?['username'] != null) {
-                                      final username = _userData!['username'].toString().toLowerCase();
-                                      final usernameDocRef = FirebaseFirestore.instance.collection('usernames').doc(username);
-                                      batch.delete(usernameDocRef);
-                                    }
-                                    await batch.commit();
-                                    await user.delete();
-                                    await FirebaseAuth.instance.signOut();
-                                    if (!mounted) return;
-                                    Navigator.of(context).pushReplacement(
-                                      MaterialPageRoute(builder: (context) => const LoginScreen()),
-                                    );
-                                  } catch (e) {
-                                    debugPrint("Error deleting account: $e");
-                                    setState(() {
-                                      passwordError = appLocalizations.wrongPassword;
-                                    });
-                                    _deleteAccountPasswordShakeController.forward(from: 0);
-                                  }
-                                },
-                                child: Text(appLocalizations.delete),
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  );
-                },
+                      ],
+                    );
+                  },
+                ),
               ),
             ),
           ),
         );
       },
-      transitionBuilder: (context, animation, secondaryAnimation, child) {
-        return FadeTransition(opacity: animation, child: child);
-      },
+      transitionBuilder: (ctx, animation, secondaryAnimation, child) =>
+          FadeTransition(opacity: animation, child: child),
     ).then((_) {
-      setState(() {
-        _isDialogOpen = false;
-      });
+      SystemChrome.setSystemUIOverlayStyle(
+        SystemUiOverlayStyle(systemNavigationBarColor: AppColors.background),
+      );
+      setState(() => _isDialogOpen = false);
     });
   }
 
   void _showEditProfileDialog(User user) {
     if (_isDialogOpen) return;
-    setState(() {
-      _isDialogOpen = true;
-    });
+    setState(() => _isDialogOpen = true);
+
     final appLocalizations = AppLocalizations.of(context)!;
     final TextEditingController nameController = TextEditingController(
       text: _userData != null && _userData!['username'] != null ? _userData!['username'] : '',
     );
     String? editUsernameError;
 
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(systemNavigationBarColor: AppColors.background),
+    );
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
@@ -2288,172 +2247,177 @@ class _AccountScreenState extends State<AccountScreen>
             child: Container(
               width: MediaQuery.of(ctx).size.width * 0.8,
               decoration: BoxDecoration(
-                color: _isDarkTheme ? const Color(0xFF191919) : Colors.white,
+                color: AppColors.dialogColor,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: StatefulBuilder(
-                builder: (ctx, setState) {
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Başlık + TextField + Animated Hata Mesajı
-                      Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          children: [
-                            Text(
-                              appLocalizations.editProfile,
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: _isDarkTheme ? Colors.white : Colors.black,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: StatefulBuilder(
+                  builder: (ctx, setState) {
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            children: [
+                              Text(
+                                appLocalizations.editProfile,
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.opposedPrimaryColor,
+                                ),
+                                textAlign: TextAlign.center,
                               ),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 12),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                ShakeWidget(
-                                  controller: _editProfileShakeController,
-                                  child: TextField(
-                                    controller: nameController,
-                                    maxLength: 16,
-                                    style: TextStyle(
-                                      color: _isDarkTheme ? Colors.white : Colors.black,
+                              const SizedBox(height: 12),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  ShakeWidget(
+                                    controller: _editProfileShakeController,
+                                    child: TextField(
+                                      controller: nameController,
+                                      maxLength: 16,
+                                      style: TextStyle(color: AppColors.opposedPrimaryColor),
+                                      decoration: InputDecoration(
+                                        labelText: appLocalizations.username,
+                                        labelStyle: TextStyle(color: AppColors.opposedPrimaryColor),
+                                        enabledBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(color: AppColors.dialogDivider),
+                                          borderRadius: BorderRadius.circular(10.0),
+                                        ),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(color: AppColors.opposedPrimaryColor),
+                                          borderRadius: BorderRadius.circular(10.0),
+                                        ),
+                                        counterText: '',
+                                      ),
                                     ),
-                                    decoration: InputDecoration(
-                                      labelText: appLocalizations.username,
-                                      labelStyle: TextStyle(
-                                        color: _isDarkTheme ? Colors.white70 : Colors.black87,
+                                  ),
+                                  AnimatedSwitcher(
+                                    duration: const Duration(milliseconds: 300),
+                                    child: editUsernameError != null
+                                        ? Padding(
+                                      padding: const EdgeInsets.only(top: 8.0),
+                                      child: Text(
+                                        editUsernameError!,
+                                        style: const TextStyle(color: Colors.red),
+                                        key: ValueKey(editUsernameError),
                                       ),
-                                      enabledBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: _isDarkTheme ? Colors.white54 : Colors.black54,
-                                        ),
-                                        borderRadius: BorderRadius.circular(10.0),
+                                    )
+                                        : const SizedBox.shrink(key: ValueKey("empty")),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                        Divider(color: AppColors.dialogDivider, thickness: 0.5, height: 1),
+                        IntrinsicHeight(
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    splashColor: AppColors.senaryColor.withOpacity(0.1),
+                                    highlightColor: AppColors.senaryColor.withOpacity(0.1),
+                                    onTap: () => Navigator.of(ctx).pop(),
+                                    child: Container(
+                                      alignment: Alignment.center,
+                                      padding: const EdgeInsets.symmetric(vertical: 16),
+                                      child: Text(
+                                        appLocalizations.cancel,
+                                        style: const TextStyle(color: Colors.blue, fontSize: 16),
                                       ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: _isDarkTheme ? Colors.white : Colors.black,
-                                        ),
-                                        borderRadius: BorderRadius.circular(10.0),
-                                      ),
-                                      counterText: '',
                                     ),
                                   ),
                                 ),
-                                AnimatedSwitcher(
-                                  duration: const Duration(milliseconds: 300),
-                                  child: editUsernameError != null
-                                      ? Padding(
-                                    padding: const EdgeInsets.only(top: 8.0),
-                                    child: Text(
-                                      editUsernameError!,
-                                      style: const TextStyle(color: Colors.red),
-                                      key: ValueKey(editUsernameError),
+                              ),
+                              VerticalDivider(width: 1, thickness: 0.5, color: AppColors.dialogDivider),
+                              Expanded(
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    splashColor: AppColors.shadow,
+                                    highlightColor: AppColors.shadow,
+                                    onTap: () async {
+                                      String newName = nameController.text.trim();
+                                      if (newName.isEmpty) {
+                                        setState(() {
+                                          editUsernameError = appLocalizations.invalidUsername;
+                                        });
+                                        _editProfileShakeController.forward(from: 0);
+                                        return;
+                                      }
+                                      if (!_usernameRegExp.hasMatch(newName)) {
+                                        setState(() {
+                                          editUsernameError = appLocalizations.invalidUsernameCharacters;
+                                        });
+                                        _editProfileShakeController.forward(from: 0);
+                                        return;
+                                      }
+                                      try {
+                                        bool isAvailable = await _isUsernameAvailable(newName);
+                                        if (!isAvailable) {
+                                          setState(() {
+                                            editUsernameError = appLocalizations.usernameTaken;
+                                          });
+                                          _editProfileShakeController.forward(from: 0);
+                                          return;
+                                        }
+                                        final batch = FirebaseFirestore.instance.batch();
+                                        final userDocRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
+                                        if (_userData != null && _userData!['username'] != null) {
+                                          final oldUsernameDocRef = FirebaseFirestore.instance
+                                              .collection('usernames')
+                                              .doc(_userData!['username']);
+                                          batch.delete(oldUsernameDocRef);
+                                        }
+                                        final newUsernameDocRef = FirebaseFirestore.instance
+                                            .collection('usernames')
+                                            .doc(newName.toLowerCase());
+                                        batch.set(newUsernameDocRef, {'userId': user.uid});
+                                        batch.update(userDocRef, {'username': newName.toLowerCase()});
+                                        await batch.commit();
+                                        await _fetchUserData();
+                                        Navigator.of(ctx).pop();
+                                      } catch (e) {
+                                        debugPrint("Error updating username: $e");
+                                        Navigator.of(ctx).pop();
+                                      }
+                                    },
+                                    child: Container(
+                                      alignment: Alignment.center,
+                                      padding: const EdgeInsets.symmetric(vertical: 16),
+                                      child: Text(
+                                        appLocalizations.save,
+                                        style: const TextStyle(color: Colors.blue, fontSize: 16),
+                                      ),
                                     ),
-                                  )
-                                      : const SizedBox.shrink(key: ValueKey("empty")),
+                                  ),
                                 ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      Divider(
-                        thickness: 0.5,
-                        height: 1,
-                        color: _isDarkTheme ? Colors.white30 : Colors.black26,
-                      ),
-                      // Alt butonlar
-                      IntrinsicHeight(
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: TextButton(
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Colors.blue,
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
-                                ),
-                                onPressed: () => Navigator.of(ctx).pop(),
-                                child: Text(appLocalizations.cancel),
                               ),
-                            ),
-                            VerticalDivider(
-                              width: 1,
-                              thickness: 0.5,
-                              color: _isDarkTheme ? Colors.white30 : Colors.black26,
-                            ),
-                            Expanded(
-                              child: TextButton(
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Colors.blue,
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
-                                ),
-                                onPressed: () async {
-                                  String newName = nameController.text.trim();
-                                  if (newName.isEmpty) {
-                                    setState(() {
-                                      editUsernameError = appLocalizations.invalidUsername;
-                                    });
-                                    _editProfileShakeController.forward(from: 0);
-                                    return;
-                                  }
-                                  if (!_usernameRegExp.hasMatch(newName)) {
-                                    setState(() {
-                                      editUsernameError = appLocalizations.invalidUsernameCharacters;
-                                    });
-                                    _editProfileShakeController.forward(from: 0);
-                                    return;
-                                  }
-                                  try {
-                                    bool isAvailable = await _isUsernameAvailable(newName);
-                                    if (!isAvailable) {
-                                      setState(() {
-                                        editUsernameError = appLocalizations.usernameTaken;
-                                      });
-                                      _editProfileShakeController.forward(from: 0);
-                                      return;
-                                    }
-                                    final batch = FirebaseFirestore.instance.batch();
-                                    final userDocRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
-                                    if (_userData != null && _userData!['username'] != null) {
-                                      final oldUsernameDocRef = FirebaseFirestore.instance.collection('usernames').doc(_userData!['username']);
-                                      batch.delete(oldUsernameDocRef);
-                                    }
-                                    final newUsernameDocRef = FirebaseFirestore.instance.collection('usernames').doc(newName.toLowerCase());
-                                    batch.set(newUsernameDocRef, {'userId': user.uid});
-                                    batch.update(userDocRef, {'username': newName.toLowerCase()});
-                                    await batch.commit();
-                                    await _fetchUserData();
-                                    Navigator.of(ctx).pop();
-                                  } catch (e) {
-                                    debugPrint("Error updating username: $e");
-                                    Navigator.of(ctx).pop();
-                                  }
-                                },
-                                child: Text(appLocalizations.save),
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  );
-                },
+                      ],
+                    );
+                  },
+                ),
               ),
             ),
           ),
         );
       },
-      transitionBuilder: (ctx, animation, secondaryAnimation, child) {
-        return FadeTransition(opacity: animation, child: child);
-      },
+      transitionBuilder: (ctx, animation, secondaryAnimation, child) =>
+          FadeTransition(opacity: animation, child: child),
     ).then((_) {
-      setState(() {
-        _isDialogOpen = false;
-      });
+      SystemChrome.setSystemUIOverlayStyle(
+        SystemUiOverlayStyle(systemNavigationBarColor: AppColors.background),
+      );
+      setState(() => _isDialogOpen = false);
     });
   }
 
@@ -2468,9 +2432,8 @@ class _AccountScreenState extends State<AccountScreen>
 
   void _showChangePasswordDialog() {
     if (_isDialogOpen) return;
-    setState(() {
-      _isDialogOpen = true;
-    });
+    setState(() => _isDialogOpen = true);
+
     final appLocalizations = AppLocalizations.of(context)!;
     final oldPasswordController = TextEditingController();
     final newPasswordController = TextEditingController();
@@ -2479,9 +2442,11 @@ class _AccountScreenState extends State<AccountScreen>
     String? oldPasswordError;
     String? newPasswordError;
     String? confirmPasswordError;
-
     bool isLoading = false;
 
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(systemNavigationBarColor: AppColors.background),
+    );
     showGeneralDialog(
       context: context,
       barrierDismissible: true,
@@ -2494,300 +2459,284 @@ class _AccountScreenState extends State<AccountScreen>
             child: Container(
               width: MediaQuery.of(ctx).size.width * 0.8,
               decoration: BoxDecoration(
-                color: _isDarkTheme ? const Color(0xFF191919) : Colors.white,
+                color: AppColors.dialogColor,
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: StatefulBuilder(
-                builder: (ctx, setState) {
-                  Future<void> attemptChangePassword() async {
-                    final oldPassword = oldPasswordController.text.trim();
-                    final newPassword = newPasswordController.text.trim();
-                    final confirmPassword = confirmPasswordController.text.trim();
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: StatefulBuilder(
+                  builder: (ctx, setState) {
+                    Future<void> attemptChangePassword() async {
+                      final oldPassword = oldPasswordController.text.trim();
+                      final newPassword = newPasswordController.text.trim();
+                      final confirmPassword = confirmPasswordController.text.trim();
 
-                    if (oldPassword.isEmpty) {
-                      setState(() {
-                        oldPasswordError = appLocalizations.invalidPassword;
-                      });
-                      _oldPasswordShakeController.forward(from: 0);
-                      return;
-                    }
-                    if (newPassword.isEmpty || newPassword.length < 6) {
-                      setState(() {
-                        newPasswordError = appLocalizations.invalidPassword;
-                      });
-                      _newPasswordShakeController.forward(from: 0);
-                      return;
-                    }
-                    if (confirmPassword != newPassword) {
-                      setState(() {
-                        confirmPasswordError = appLocalizations.passwordsDoNotMatch;
-                      });
-                      _confirmPasswordShakeController.forward(from: 0);
-                      return;
-                    }
-
-                    setState(() => isLoading = true);
-
-                    try {
-                      final user = FirebaseAuth.instance.currentUser;
-                      if (user == null) {
-                        Navigator.of(ctx).pop();
+                      if (oldPassword.isEmpty) {
+                        setState(() {
+                          oldPasswordError = appLocalizations.invalidPassword;
+                        });
+                        _oldPasswordShakeController.forward(from: 0);
+                        return;
+                      }
+                      if (newPassword.isEmpty || newPassword.length < 6) {
+                        setState(() {
+                          newPasswordError = appLocalizations.invalidPassword;
+                        });
+                        _newPasswordShakeController.forward(from: 0);
+                        return;
+                      }
+                      if (confirmPassword != newPassword) {
+                        setState(() {
+                          confirmPasswordError = appLocalizations.passwordsDoNotMatch;
+                        });
+                        _confirmPasswordShakeController.forward(from: 0);
                         return;
                       }
 
-                      final credential = EmailAuthProvider.credential(
-                        email: user.email!,
-                        password: oldPassword,
-                      );
-                      await user.reauthenticateWithCredential(credential);
-
-                      await user.updatePassword(newPassword);
-
-                      setState(() => isLoading = false);
-                      Navigator.of(ctx).pop();
-
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(appLocalizations.passwordUpdated),
-                          backgroundColor: Colors.green,
-                        ),
-                      );
-                    } on FirebaseAuthException catch (e) {
-                      setState(() => isLoading = false);
-                      if (e.code == 'wrong-password') {
+                      setState(() => isLoading = true);
+                      try {
+                        final user = FirebaseAuth.instance.currentUser;
+                        if (user == null) {
+                          Navigator.of(ctx).pop();
+                          return;
+                        }
+                        final credential = EmailAuthProvider.credential(
+                          email: user.email!,
+                          password: oldPassword,
+                        );
+                        await user.reauthenticateWithCredential(credential);
+                        await user.updatePassword(newPassword);
+                        setState(() => isLoading = false);
+                        Navigator.of(ctx).pop();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(appLocalizations.passwordUpdated), backgroundColor: Colors.green),
+                        );
+                      } on FirebaseAuthException catch (e) {
+                        setState(() => isLoading = false);
+                        if (e.code == 'wrong-password') {
+                          setState(() {
+                            oldPasswordError = appLocalizations.wrongPassword;
+                          });
+                          _oldPasswordShakeController.forward(from: 0);
+                        } else if (e.code == 'weak-password') {
+                          setState(() {
+                            newPasswordError = appLocalizations.weakPassword;
+                          });
+                          _newPasswordShakeController.forward(from: 0);
+                        } else {
+                          setState(() {
+                            oldPasswordError = e.message ?? appLocalizations.authError;
+                          });
+                          _oldPasswordShakeController.forward(from: 0);
+                        }
+                      } catch (e) {
+                        setState(() => isLoading = false);
                         setState(() {
-                          oldPasswordError = appLocalizations.wrongPassword;
-                        });
-                        _oldPasswordShakeController.forward(from: 0);
-                      } else if (e.code == 'weak-password') {
-                        setState(() {
-                          newPasswordError = appLocalizations.weakPassword;
-                        });
-                        _newPasswordShakeController.forward(from: 0);
-                      } else {
-                        setState(() {
-                          oldPasswordError = e.message ?? appLocalizations.authError;
+                          oldPasswordError = appLocalizations.updateFailed;
                         });
                         _oldPasswordShakeController.forward(from: 0);
                       }
-                    } catch (e) {
-                      setState(() => isLoading = false);
-                      setState(() {
-                        oldPasswordError = appLocalizations.updateFailed;
-                      });
-                      _oldPasswordShakeController.forward(from: 0);
                     }
-                  }
 
-                  return Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Başlık ve 3 adet TextField (her biri AnimatedSwitcher ile hata mesajı gösteriyor)
-                      Padding(
-                        padding: const EdgeInsets.all(20),
-                        child: Column(
-                          children: [
-                            Text(
-                              appLocalizations.changePassword,
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: _isDarkTheme ? Colors.white : Colors.black,
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            children: [
+                              Text(
+                                appLocalizations.changePassword,
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.opposedPrimaryColor,
+                                ),
+                                textAlign: TextAlign.center,
                               ),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 12),
-                            // Eski şifre
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                ShakeWidget(
-                                  controller: _oldPasswordShakeController,
-                                  child: TextField(
-                                    controller: oldPasswordController,
-                                    obscureText: true,
-                                    decoration: InputDecoration(
-                                      labelText: appLocalizations.oldPassword,
-                                      enabledBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: _isDarkTheme ? Colors.white54 : Colors.black54,
+                              const SizedBox(height: 12),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  ShakeWidget(
+                                    controller: _oldPasswordShakeController,
+                                    child: TextField(
+                                      controller: oldPasswordController,
+                                      obscureText: true,
+                                      decoration: InputDecoration(
+                                        labelText: appLocalizations.oldPassword,
+                                        enabledBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(color: AppColors.dialogDivider),
+                                          borderRadius: BorderRadius.circular(10.0),
                                         ),
-                                        borderRadius: BorderRadius.circular(10.0),
-                                      ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: _isDarkTheme ? Colors.white : Colors.black,
+                                        focusedBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(color: AppColors.opposedPrimaryColor),
+                                          borderRadius: BorderRadius.circular(10.0),
                                         ),
-                                        borderRadius: BorderRadius.circular(10.0),
                                       ),
                                     ),
                                   ),
-                                ),
-                                AnimatedSwitcher(
-                                  duration: const Duration(milliseconds: 300),
-                                  child: oldPasswordError != null
-                                      ? Padding(
-                                    padding: const EdgeInsets.only(top: 8.0),
-                                    child: Text(
-                                      oldPasswordError!,
-                                      style: const TextStyle(color: Colors.red),
-                                      key: ValueKey(oldPasswordError),
-                                    ),
-                                  )
-                                      : const SizedBox.shrink(key: ValueKey("empty")),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 20),
-                            // Yeni şifre
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                ShakeWidget(
-                                  controller: _newPasswordShakeController,
-                                  child: TextField(
-                                    controller: newPasswordController,
-                                    obscureText: true,
-                                    decoration: InputDecoration(
-                                      labelText: appLocalizations.newPassword,
-                                      enabledBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: _isDarkTheme ? Colors.white54 : Colors.black54,
-                                        ),
-                                        borderRadius: BorderRadius.circular(10.0),
+                                  AnimatedSwitcher(
+                                    duration: const Duration(milliseconds: 300),
+                                    child: oldPasswordError != null
+                                        ? Padding(
+                                      padding: const EdgeInsets.only(top: 8.0),
+                                      child: Text(
+                                        oldPasswordError!,
+                                        style: const TextStyle(color: Colors.red),
+                                        key: ValueKey(oldPasswordError),
                                       ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: _isDarkTheme ? Colors.white : Colors.black,
+                                    )
+                                        : const SizedBox.shrink(key: ValueKey("empty")),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 20),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  ShakeWidget(
+                                    controller: _newPasswordShakeController,
+                                    child: TextField(
+                                      controller: newPasswordController,
+                                      obscureText: true,
+                                      decoration: InputDecoration(
+                                        labelText: appLocalizations.newPassword,
+                                        enabledBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(color: AppColors.dialogDivider),
+                                          borderRadius: BorderRadius.circular(10.0),
                                         ),
-                                        borderRadius: BorderRadius.circular(10.0),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(color: AppColors.opposedPrimaryColor),
+                                          borderRadius: BorderRadius.circular(10.0),
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                                AnimatedSwitcher(
-                                  duration: const Duration(milliseconds: 300),
-                                  child: newPasswordError != null
-                                      ? Padding(
-                                    padding: const EdgeInsets.only(top: 8.0),
-                                    child: Text(
-                                      newPasswordError!,
-                                      style: const TextStyle(color: Colors.red),
-                                      key: ValueKey(newPasswordError),
-                                    ),
-                                  )
-                                      : const SizedBox.shrink(key: ValueKey("empty")),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 20),
-                            // Yeni şifre (tekrar)
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                ShakeWidget(
-                                  controller: _confirmPasswordShakeController,
-                                  child: TextField(
-                                    controller: confirmPasswordController,
-                                    obscureText: true,
-                                    decoration: InputDecoration(
-                                      labelText: appLocalizations.confirmPassword,
-                                      enabledBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: _isDarkTheme ? Colors.white54 : Colors.black54,
-                                        ),
-                                        borderRadius: BorderRadius.circular(10.0),
+                                  AnimatedSwitcher(
+                                    duration: const Duration(milliseconds: 300),
+                                    child: newPasswordError != null
+                                        ? Padding(
+                                      padding: const EdgeInsets.only(top: 8.0),
+                                      child: Text(
+                                        newPasswordError!,
+                                        style: const TextStyle(color: Colors.red),
+                                        key: ValueKey(newPasswordError),
                                       ),
-                                      focusedBorder: OutlineInputBorder(
-                                        borderSide: BorderSide(
-                                          color: _isDarkTheme ? Colors.white : Colors.black,
+                                    )
+                                        : const SizedBox.shrink(key: ValueKey("empty")),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 20),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  ShakeWidget(
+                                    controller: _confirmPasswordShakeController,
+                                    child: TextField(
+                                      controller: confirmPasswordController,
+                                      obscureText: true,
+                                      decoration: InputDecoration(
+                                        labelText: appLocalizations.confirmPassword,
+                                        enabledBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(color: AppColors.dialogDivider),
+                                          borderRadius: BorderRadius.circular(10.0),
                                         ),
-                                        borderRadius: BorderRadius.circular(10.0),
+                                        focusedBorder: OutlineInputBorder(
+                                          borderSide: BorderSide(color: AppColors.opposedPrimaryColor),
+                                          borderRadius: BorderRadius.circular(10.0),
+                                        ),
                                       ),
                                     ),
                                   ),
-                                ),
-                                AnimatedSwitcher(
-                                  duration: const Duration(milliseconds: 300),
-                                  child: confirmPasswordError != null
-                                      ? Padding(
-                                    padding: const EdgeInsets.only(top: 8.0),
-                                    child: Text(
-                                      confirmPasswordError!,
-                                      style: const TextStyle(color: Colors.red),
-                                      key: ValueKey(confirmPasswordError),
-                                    ),
-                                  )
-                                      : const SizedBox.shrink(key: ValueKey("empty")),
-                                ),
-                              ],
-                            ),
-                          ],
+                                  AnimatedSwitcher(
+                                    duration: const Duration(milliseconds: 300),
+                                    child: confirmPasswordError != null
+                                        ? Padding(
+                                      padding: const EdgeInsets.only(top: 8.0),
+                                      child: Text(
+                                        confirmPasswordError!,
+                                        style: const TextStyle(color: Colors.red),
+                                        key: ValueKey(confirmPasswordError),
+                                      ),
+                                    )
+                                        : const SizedBox.shrink(key: ValueKey("empty")),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      Divider(
-                        thickness: 0.5,
-                        height: 1,
-                        color: _isDarkTheme ? Colors.white30 : Colors.black26,
-                      ),
-                      // Butonlar
-                      IntrinsicHeight(
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: TextButton(
-                                onPressed: isLoading ? null : () => Navigator.of(ctx).pop(),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Colors.blue,
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
-                                ),
-                                child: Text(appLocalizations.cancel),
-                              ),
-                            ),
-                            VerticalDivider(
-                              width: 1,
-                              thickness: 0.5,
-                              color: _isDarkTheme ? Colors.white30 : Colors.black26,
-                            ),
-                            Expanded(
-                              child: TextButton(
-                                onPressed: isLoading ? null : attemptChangePassword,
-                                style: TextButton.styleFrom(
-                                  foregroundColor: Colors.red,
-                                  padding: const EdgeInsets.symmetric(vertical: 16),
-                                ),
-                                child: isLoading
-                                    ? SizedBox(
-                                  width: 20,
-                                  height: 20,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2.0,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      _isDarkTheme ? Colors.white : Colors.black,
+                        Divider(color: AppColors.dialogDivider, thickness: 0.5, height: 1),
+                        IntrinsicHeight(
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    splashColor: AppColors.senaryColor.withOpacity(0.1),
+                                    highlightColor: AppColors.senaryColor.withOpacity(0.1),
+                                    onTap: isLoading ? null : () => Navigator.of(ctx).pop(),
+                                    child: Container(
+                                      alignment: Alignment.center,
+                                      padding: const EdgeInsets.symmetric(vertical: 16),
+                                      child: Text(
+                                        appLocalizations.cancel,
+                                        style: const TextStyle(color: Colors.blue, fontSize: 16),
+                                      ),
                                     ),
                                   ),
-                                )
-                                    : Text(appLocalizations.save),
+                                ),
                               ),
-                            ),
-                          ],
+                              VerticalDivider(width: 1, thickness: 0.5, color: AppColors.dialogDivider),
+                              Expanded(
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    splashColor: Colors.red.withOpacity(0.3),
+                                    highlightColor: Colors.red.withOpacity(0.1),
+                                    onTap: isLoading ? null : attemptChangePassword,
+                                    child: Container(
+                                      alignment: Alignment.center,
+                                      padding: const EdgeInsets.symmetric(vertical: 16),
+                                      child: isLoading
+                                          ? SizedBox(
+                                        width: 20,
+                                        height: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2.0,
+                                          valueColor: AlwaysStoppedAnimation<Color>(AppColors.opposedPrimaryColor),
+                                        ),
+                                      )
+                                          : Text(
+                                        appLocalizations.save,
+                                        style: const TextStyle(color: Colors.red, fontSize: 16),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  );
-                },
+                      ],
+                    );
+                  },
+                ),
               ),
             ),
           ),
         );
       },
-      transitionBuilder: (ctx, animation, secondaryAnimation, child) {
-        return FadeTransition(opacity: animation, child: child);
-      },
+      transitionBuilder: (ctx, animation, secondaryAnimation, child) =>
+          FadeTransition(opacity: animation, child: child),
     ).then((_) {
-      setState(() {
-        _isDialogOpen = false;
-      });
+      SystemChrome.setSystemUIOverlayStyle(
+        SystemUiOverlayStyle(systemNavigationBarColor: AppColors.background),
+      );
+      setState(() => _isDialogOpen = false);
     });
   }
 
@@ -2814,9 +2763,8 @@ class _AccountScreenState extends State<AccountScreen>
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
-    // Örnek orantılar
-    double iconSize = screenWidth * 0.05; // ~20 px
-    double fontSize = screenWidth * 0.035; // ~13-14 px
+    double iconSize = screenWidth * 0.05;
+    double fontSize = screenWidth * 0.035;
 
     return Container(
       padding: EdgeInsets.symmetric(
@@ -2824,21 +2772,21 @@ class _AccountScreenState extends State<AccountScreen>
         vertical: screenHeight * 0.008,
       ),
       decoration: BoxDecoration(
-        color: _isDarkTheme ? Colors.grey[900] : Colors.grey[200],
+        color: AppColors.badgeBackground,
         borderRadius: BorderRadius.circular(12.0),
       ),
       child: Row(
         children: [
           Icon(
             icon,
-            color: _isDarkTheme ? Colors.white : Colors.black,
+            color: AppColors.opposedPrimaryColor,
             size: iconSize,
           ),
           SizedBox(width: screenWidth * 0.02),
           Text(
             label,
             style: GoogleFonts.poppins(
-              color: _isDarkTheme ? Colors.white : Colors.black,
+              color: AppColors.opposedPrimaryColor,
               fontSize: fontSize,
               fontWeight: FontWeight.w500,
             ),
@@ -2849,14 +2797,12 @@ class _AccountScreenState extends State<AccountScreen>
   }
 }
 
-/// Animasyonlu Border Painter
+// AnimatedBorderPainter artık AppColors kullanıyor:
 class AnimatedBorderPainter extends CustomPainter {
   final double animationValue;
-  final bool isDarkTheme;
 
   AnimatedBorderPainter({
     required this.animationValue,
-    required this.isDarkTheme,
   });
 
   @override
@@ -2867,16 +2813,7 @@ class AnimatedBorderPainter extends CustomPainter {
 
     Paint paint = Paint()
       ..shader = SweepGradient(
-        colors: const [
-          Colors.red,
-          Colors.orange,
-          Colors.yellow,
-          Colors.green,
-          Colors.blue,
-          Colors.indigo,
-          Colors.purple,
-          Colors.red,
-        ],
+        colors: AppColors.animatedBorderGradientColors,
         startAngle: 0.0,
         endAngle: 2 * pi,
         transform: GradientRotation(animationValue),
@@ -2889,26 +2826,23 @@ class AnimatedBorderPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant AnimatedBorderPainter oldDelegate) {
-    return oldDelegate.animationValue != animationValue ||
-        oldDelegate.isDarkTheme != isDarkTheme;
+    return oldDelegate.animationValue != animationValue;
   }
 }
 
+// SkeletonLoaderShimmer artık AppColors üzerinden shimmer renklerini kullanıyor:
 class SkeletonLoaderShimmer extends StatelessWidget {
-  final bool isDarkTheme;
-
-  const SkeletonLoaderShimmer({Key? key, required this.isDarkTheme})
-      : super(key: key);
+  const SkeletonLoaderShimmer({Key? key}) : super(key: key);
 
   Widget _buildCircle(double size) {
     return Shimmer.fromColors(
-      baseColor: isDarkTheme ? Colors.grey[700]! : Colors.grey[300]!,
-      highlightColor: isDarkTheme ? Colors.grey[600]! : Colors.grey[100]!,
+      baseColor: AppColors.shimmerBase,
+      highlightColor: AppColors.shimmerHighlight,
       child: Container(
         width: size,
         height: size,
         decoration: BoxDecoration(
-          color: isDarkTheme ? Colors.grey[700] : Colors.grey[300],
+          color: AppColors.skeletonContainer,
           shape: BoxShape.circle,
         ),
       ),
@@ -2921,31 +2855,30 @@ class SkeletonLoaderShimmer extends StatelessWidget {
     double radius = 8.0,
   }) {
     return Shimmer.fromColors(
-      baseColor: isDarkTheme ? Colors.grey[700]! : Colors.grey[300]!,
-      highlightColor: isDarkTheme ? Colors.grey[600]! : Colors.grey[100]!,
+      baseColor: AppColors.shimmerBase,
+      highlightColor: AppColors.shimmerHighlight,
       child: Container(
         width: width,
         height: height,
         decoration: BoxDecoration(
-          color: isDarkTheme ? Colors.grey[700] : Colors.grey[300],
+          color: AppColors.skeletonContainer,
           borderRadius: BorderRadius.circular(radius),
         ),
       ),
     );
   }
 
-  Widget _buildSkeletonBadge(double iconSize, double textWidth,
-      double textHeight) {
+  Widget _buildSkeletonBadge(double iconSize, double textWidth, double textHeight) {
     return Shimmer.fromColors(
-      baseColor: isDarkTheme ? Colors.grey[800]! : Colors.grey[300]!,
-      highlightColor: isDarkTheme ? Colors.grey[700]! : Colors.grey[100]!,
+      baseColor: AppColors.shimmerBase,
+      highlightColor: AppColors.shimmerHighlight,
       child: Container(
         padding: EdgeInsets.symmetric(
           horizontal: iconSize * 0.6,
           vertical: iconSize * 0.3,
         ),
         decoration: BoxDecoration(
-          color: isDarkTheme ? Colors.grey[800] : Colors.grey[300],
+          color: AppColors.skeletonContainer,
           borderRadius: BorderRadius.circular(12.0),
         ),
         child: Row(
@@ -2969,14 +2902,14 @@ class SkeletonLoaderShimmer extends StatelessWidget {
 
   Widget _buildSkeletonButton(double width, double height) {
     return Shimmer.fromColors(
-      baseColor: isDarkTheme ? Colors.grey[700]! : Colors.grey[300]!,
-      highlightColor: isDarkTheme ? Colors.grey[600]! : Colors.grey[100]!,
+      baseColor: AppColors.shimmerBase,
+      highlightColor: AppColors.shimmerHighlight,
       child: Container(
         width: width,
         height: height,
         margin: EdgeInsets.symmetric(vertical: height * 0.16),
         decoration: BoxDecoration(
-          color: isDarkTheme ? Colors.grey[700] : Colors.grey[300],
+          color: AppColors.skeletonContainer,
           borderRadius: BorderRadius.circular(12.0),
         ),
       ),
@@ -2997,15 +2930,15 @@ class SkeletonLoaderShimmer extends StatelessWidget {
         GestureDetector(
           onTap: () {},
           child: Shimmer.fromColors(
-            baseColor: isDarkTheme ? Colors.grey[700]! : Colors.grey[300]!,
-            highlightColor: isDarkTheme ? Colors.grey[600]! : Colors.grey[100]!,
+            baseColor: AppColors.shimmerBase,
+            highlightColor: AppColors.shimmerHighlight,
             child: Container(
               padding: EdgeInsets.symmetric(
                 horizontal: horizontalPadding,
                 vertical: verticalPadding,
               ),
               decoration: BoxDecoration(
-                color: isDarkTheme ? Colors.grey[700] : Colors.grey[300],
+                color: AppColors.skeletonContainer,
                 borderRadius: BorderRadius.circular(12.0),
               ),
               child: Row(
@@ -3015,8 +2948,7 @@ class SkeletonLoaderShimmer extends StatelessWidget {
                     children: [
                       _buildSkeletonSection(width: iconSize, height: iconSize),
                       SizedBox(width: horizontalPadding),
-                      _buildSkeletonSection(
-                          width: textWidth, height: textHeight),
+                      _buildSkeletonSection(width: textWidth, height: textHeight),
                     ],
                   ),
                   _buildSkeletonSection(width: arrowSize, height: arrowSize),
@@ -3027,7 +2959,7 @@ class SkeletonLoaderShimmer extends StatelessWidget {
         ),
         SizedBox(height: verticalPadding * 0.5),
         Divider(
-          color: isDarkTheme ? Colors.grey[700] : Colors.grey[300],
+          color: AppColors.dialogDivider,
           thickness: 1,
           height: 1,
         ),
@@ -3038,16 +2970,9 @@ class SkeletonLoaderShimmer extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery
-        .of(context)
-        .size
-        .width;
-    final screenHeight = MediaQuery
-        .of(context)
-        .size
-        .height;
-
-    // Boyut ve spacing değerlerini ekranda oransal ayarlayalım
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final themeProvider = Provider.of<ThemeProvider>(context, listen: true);
     final double circleSize = screenWidth * 0.25;
     final double smallSpacing = screenHeight * 0.01;
     final double medSpacing = screenHeight * 0.02;
@@ -3065,24 +2990,22 @@ class SkeletonLoaderShimmer extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Display Name
                   _buildSkeletonSection(
                     width: screenWidth * 0.4,
-                    height: screenHeight * 0.03, // ~24 px
+                    height: screenHeight * 0.03,
                   ),
                   SizedBox(height: screenHeight * 0.01),
-                  // Email
                   _buildSkeletonSection(
                     width: screenWidth * 0.5,
-                    height: screenHeight * 0.02, // ~16 px
+                    height: screenHeight * 0.02,
                   ),
                   SizedBox(height: screenHeight * 0.015),
                   Row(
                     children: [
                       _buildSkeletonBadge(
-                        screenWidth * 0.05, // iconSize
-                        screenWidth * 0.1, // textWidth
-                        screenHeight * 0.02, // textHeight
+                        screenWidth * 0.05,
+                        screenWidth * 0.1,
+                        screenHeight * 0.02,
                       ),
                       SizedBox(width: screenWidth * 0.02),
                       _buildSkeletonBadge(
@@ -3098,8 +3021,6 @@ class SkeletonLoaderShimmer extends StatelessWidget {
           ],
         ),
         SizedBox(height: largeSpacing),
-
-        // User Section Skeleton
         _buildSkeletonSection(
           width: screenWidth * 0.2,
           height: screenHeight * 0.03,
@@ -3119,8 +3040,6 @@ class SkeletonLoaderShimmer extends StatelessWidget {
         _buildSkeletonButton(screenWidth, screenHeight * 0.06),
         _buildSkeletonButton(screenWidth, screenHeight * 0.06),
         SizedBox(height: largeSpacing),
-
-        // Language Selection Skeleton
         _buildSkeletonSection(
           width: screenWidth * 0.2,
           height: screenHeight * 0.03,
@@ -3138,8 +3057,6 @@ class SkeletonLoaderShimmer extends StatelessWidget {
         SizedBox(height: smallSpacing),
         _buildSkeletonButton(screenWidth, screenHeight * 0.06),
         SizedBox(height: medSpacing),
-
-        // Theme Selection Skeleton
         _buildSkeletonSection(
           width: screenWidth * 0.2,
           height: screenHeight * 0.03,
@@ -3162,8 +3079,6 @@ class SkeletonLoaderShimmer extends StatelessWidget {
         SizedBox(height: medSpacing),
         _buildSkeletonButton(screenWidth, screenHeight * 0.06),
         SizedBox(height: largeSpacing),
-
-        // Settings Section Skeleton
         _buildSkeletonSection(
           width: screenWidth * 0.6,
           height: screenHeight * 0.03,
@@ -3179,8 +3094,6 @@ class SkeletonLoaderShimmer extends StatelessWidget {
           height: screenHeight * 0.02,
         ),
         SizedBox(height: medSpacing),
-
-        // Toplam 6 adet satır
         _buildSkeletonSettingsButton(
           iconSize: screenWidth * 0.05,
           textWidth: screenWidth * 0.3,

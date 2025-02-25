@@ -3,6 +3,8 @@
 import 'dart:convert';
 import 'dart:ui';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cortex/premium.dart';
+import 'package:cortex/chat/viewer.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
@@ -14,25 +16,25 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:uuid/uuid.dart';
-import 'settings.dart';
-import 'data.dart';
-import 'download.dart';
-import 'main.dart';
-import 'conversations.dart';
+import '../hexagons.dart';
+import '../models.dart';
+import '../settings.dart';
+import '../data.dart';
+import '../download.dart';
+import '../main.dart';
+import '../inbox.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
-import 'api.dart';
+import '../api.dart';
 import 'messages.dart';
-import 'notifications.dart';
-import 'theme.dart';
+import '../notifications.dart';
+import '../theme.dart';
 import 'dart:io';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
-import 'package:flutter_math_fork/flutter_math.dart';
-import 'system_info.dart';
+import '../system_info.dart';
 import 'package:flutter/gestures.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:gallery_saver_plus/gallery_saver.dart';
 
 class ShortLongPressGestureRecognizer extends LongPressGestureRecognizer {
   ShortLongPressGestureRecognizer({
@@ -67,346 +69,6 @@ class Message {
   }) : notifier = ValueNotifier(text);  // Başlangıç değeri
 }
 
-class PhotoViewer extends StatelessWidget {
-  final File imageFile;
-  const PhotoViewer({Key? key, required this.imageFile}) : super(key: key);
-
-  /// 50 ms açılma ve kapanma süresiyle geçiş yapan route metodu.
-  static Route route(File imageFile) {
-    return PageRouteBuilder(
-      transitionDuration: const Duration(milliseconds: 50),
-      reverseTransitionDuration: const Duration(milliseconds: 50),
-      opaque: false,
-      barrierDismissible: false,
-      pageBuilder: (_, __, ___) => PhotoViewer(imageFile: imageFile),
-      transitionsBuilder: (context, animation, secondaryAnimation, child) {
-        final fadeAnim =
-        Tween<double>(begin: 0.0, end: 1.0).animate(animation);
-        final scaleAnim = Tween<double>(begin: 0.90, end: 1.0).animate(
-          CurvedAnimation(parent: animation, curve: Curves.easeOut),
-        );
-        return FadeTransition(
-          opacity: fadeAnim,
-          child: ScaleTransition(scale: scaleAnim, child: child),
-        );
-      },
-      barrierColor: Colors.black.withOpacity(0.5),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final localizations = AppLocalizations.of(context)!;
-    final notificationService =
-    Provider.of<NotificationService>(context, listen: false);
-    final Size screenSize = MediaQuery.of(context).size;
-
-    // Dinamik boyutlar (oranlar isteğe göre ayarlanabilir):
-    final double horizontalMargin = screenSize.width * 0.05; // %5
-    final double imageTopMargin = screenSize.height * 0.1;     // %10
-    final double imageBottomMargin = screenSize.height * 0.1;  // %10
-
-    final double availableWidth = screenSize.width - (horizontalMargin * 2);
-    final double availableHeight =
-        screenSize.height - imageTopMargin - imageBottomMargin;
-
-    // Buton ve ikon boyutları:
-    final double closeButtonSize = screenSize.width * 0.07;
-    final double bottomRowVerticalMargin = screenSize.height * 0.02;
-    final double iconSize = screenSize.width * 0.05;
-    final double fontSize = screenSize.width * 0.03;
-
-    // Gradient overlay yüksekliği: alt kısımda, fotoğrafın üzerinde görünecek.
-    final double gradientHeight = screenSize.height * 0.2;
-
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Stack(
-        children: [
-          // Arka planı bulanıklaştıran overlay (arka planda kalır)
-          Positioned.fill(
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 5.0, sigmaY: 5.0),
-              child: Container(color: Colors.black.withOpacity(0.2)),
-            ),
-          ),
-          // Tüm içerikler SafeArea içinde; fotoğraf, gradient ve butonlar katman sırasına göre:
-          SafeArea(
-            child: Stack(
-              children: [
-                // Fotoğraf katmanı (arka planda)
-                Center(
-                  child: Container(
-                    margin: EdgeInsets.only(
-                      left: horizontalMargin,
-                      right: horizontalMargin,
-                      top: imageTopMargin,
-                      bottom: imageBottomMargin,
-                    ),
-                    constraints: BoxConstraints(
-                      maxWidth: availableWidth,
-                      maxHeight: availableHeight,
-                    ),
-                    child: InteractiveViewer(
-                      panEnabled: false,
-                      scaleEnabled: true,
-                      minScale: 1.0,
-                      maxScale: 4.0,
-                      boundaryMargin:
-                      EdgeInsets.all(screenSize.width * 0.1),
-                      clipBehavior: Clip.none,
-                      child: ClipRRect(
-                        borderRadius:
-                        BorderRadius.circular(screenSize.width * 0.02),
-                        child: Image.file(
-                          imageFile,
-                          fit: BoxFit.contain,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                // Gradient overlay: fotoğrafın üzerinde, alt kısımda görünür.
-                Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  height: gradientHeight,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.bottomCenter,
-                        end: Alignment.topCenter,
-                        colors: [
-                          Colors.black.withOpacity(0.5),
-                          Colors.transparent,
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                // Üstte ortalanmış kapan (X) butonu
-                Positioned(
-                  top: screenSize.height * 0.02,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: IconButton(
-                      icon: Icon(
-                        Icons.close,
-                        color: Colors.white,
-                        size: closeButtonSize,
-                      ),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
-                  ),
-                ),
-                // Alt kısımda paylaşma ve indirme butonları
-                Positioned(
-                  bottom: bottomRowVerticalMargin,
-                  left: 0,
-                  right: 0,
-                  child: Padding(
-                    padding:
-                    EdgeInsets.symmetric(horizontal: screenSize.width * 0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        // Paylaş butonu
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () async {
-                              await Share.shareXFiles(
-                                  [XFile(imageFile.path)]);
-                            },
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                SvgPicture.asset(
-                                  'assets/share.svg',
-                                  width: iconSize,
-                                  height: iconSize,
-                                  color: Colors.white,
-                                ),
-                                SizedBox(height: screenSize.height * 0.005),
-                                Text(
-                                  localizations.share,
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: fontSize,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        // Dikey ayırıcı
-                        Container(
-                          width: screenSize.width * 0.002,
-                          height: screenSize.height * 0.06,
-                          color: Colors.white,
-                        ),
-                        // İndir butonu
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () async {
-                              try {
-                                final tempDir = await getTemporaryDirectory();
-                                final baseName = 'cortex';
-                                const extension = '.jpg';
-                                int i = 0;
-                                late File localFile;
-                                while (true) {
-                                  final fileName = i == 0
-                                      ? '$baseName$extension'
-                                      : '$baseName-$i$extension';
-                                  localFile =
-                                      File(path.join(tempDir.path, fileName));
-                                  if (!(await localFile.exists())) {
-                                    break;
-                                  }
-                                  i++;
-                                }
-                                // Resmi geçici dizine kopyala
-                                await imageFile.copy(localFile.path);
-                                // Galeriye kaydet
-                                final bool? success =
-                                await GallerySaver.saveImage(localFile.path);
-                                if (success == true) {
-                                  notificationService.showNotification(
-                                    message: localizations.downloadSuccess,
-                                    isSuccess: true,
-                                    bottomOffset: 0.1,
-                                  );
-                                } else {
-                                  notificationService.showNotification(
-                                    message: localizations.downloadFailed,
-                                    isSuccess: false,
-                                    bottomOffset: 0.1,
-                                  );
-                                }
-                              } catch (e) {
-                                notificationService.showNotification(
-                                  message: localizations.downloadFailed,
-                                  isSuccess: false,
-                                  bottomOffset: 0.1,
-                                );
-                              }
-                            },
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                SvgPicture.asset(
-                                  'assets/download.svg',
-                                  width: iconSize,
-                                  height: iconSize,
-                                  color: Colors.white,
-                                ),
-                                SizedBox(height: screenSize.height * 0.005),
-                                Text(
-                                  localizations.download,
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize: fontSize,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// A stateful widget that measures the width of a rendered Math.tex widget
-/// and, if it overflows, scales it down just enough to fit.
-class _FittingLatexWidget extends StatefulWidget {
-  final String latex;
-  final bool isDarkTheme;
-
-  const _FittingLatexWidget({
-    Key? key,
-    required this.latex,
-    required this.isDarkTheme,
-  }) : super(key: key);
-
-  @override
-  State<_FittingLatexWidget> createState() => _FittingLatexWidgetState();
-}
-
-class _FittingLatexWidgetState extends State<_FittingLatexWidget> {
-  final GlobalKey _renderKey = GlobalKey();
-  double _scale = 1.0;
-
-  @override
-  void didUpdateWidget(covariant _FittingLatexWidget oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // If the LaTeX changes, re-measure and possibly rescale
-    if (oldWidget.latex != widget.latex) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _measureWidth());
-    }
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    // Measure after the first layout
-    WidgetsBinding.instance.addPostFrameCallback((_) => _measureWidth());
-  }
-
-  void _measureWidth() {
-    final renderBox = _renderKey.currentContext?.findRenderObject() as RenderBox?;
-    if (renderBox == null) return;
-
-    final childWidth = renderBox.size.width;
-    final availableWidth = renderBox.constraints.maxWidth;
-
-    if (childWidth > availableWidth && availableWidth > 0) {
-      setState(() {
-        _scale = availableWidth / childWidth;
-      });
-    } else {
-      setState(() {
-        _scale = 1.0;
-      });
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return Transform.scale(
-          scale: _scale,
-          alignment: Alignment.topLeft,
-          child: Container(
-            key: _renderKey,
-            child: Math.tex(
-              widget.latex,
-              textStyle: TextStyle(
-                color: widget.isDarkTheme ? Colors.white : Colors.black,
-                fontSize: 16,
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
 
 class ModelInfo {
   final String id;
@@ -430,80 +92,7 @@ class ModelInfo {
   });
 }
 
-class HexagonClipper extends CustomClipper<Path> {
-  @override
-  Path getClip(Size size) {
-    double width = size.width;
-    double height = size.height;
-    double centerHeight = height / 2;
-
-    Path path = Path();
-    path.moveTo(width * 0.25, 0); // Top-left
-    path.lineTo(width * 0.75, 0); // Top-right
-    path.lineTo(width, centerHeight); // Middle-right
-    path.lineTo(width * 0.75, height); // Bottom-right
-    path.lineTo(width * 0.25, height); // Bottom-left
-    path.lineTo(0, centerHeight); // Middle-left
-    path.close();
-
-    return path;
-  }
-
-  @override
-  bool shouldReclip(CustomClipper<Path> oldClipper) => false;
-}
-
-class HexagonBorderPainter extends CustomPainter {
-  final Color fillColor;   // eklendi
-  final Color borderColor;
-  final double strokeWidth;
-
-  HexagonBorderPainter({
-    required this.fillColor,   // eklendi
-    required this.borderColor,
-    this.strokeWidth = 1.5,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    // Altıgen path oluştur
-    final double width = size.width;
-    final double height = size.height;
-    final double centerHeight = height / 2;
-
-    Path path = Path()
-      ..moveTo(width * 0.25, 0)       // Top-left
-      ..lineTo(width * 0.75, 0)       // Top-right
-      ..lineTo(width, centerHeight)   // Right-center
-      ..lineTo(width * 0.75, height)  // Bottom-right
-      ..lineTo(width * 0.25, height)  // Bottom-left
-      ..lineTo(0, centerHeight)       // Left-center
-      ..close();
-
-    // 1) Önce dolguyu boya
-    final fillPaint = Paint()
-      ..color = fillColor
-      ..style = PaintingStyle.fill;
-    canvas.drawPath(path, fillPaint);
-
-    // 2) Sonra dış çizgiyi (stroke) boya
-    final strokePaint = Paint()
-      ..color = borderColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = strokeWidth;
-    canvas.drawPath(path, strokePaint);
-  }
-
-  @override
-  bool shouldRepaint(covariant HexagonBorderPainter oldDelegate) {
-    return oldDelegate.fillColor != fillColor ||
-        oldDelegate.borderColor != borderColor ||
-        oldDelegate.strokeWidth != strokeWidth;
-  }
-}
-
-
-Widget buildChatActionButton(bool isDarkTheme, VoidCallback onPressed) {
+Widget buildChatActionButton(VoidCallback onPressed) {
   return AnimatedSwitcher(
     duration: const Duration(milliseconds: 100),
     transitionBuilder: (Widget child, Animation<double> animation) {
@@ -517,12 +106,12 @@ Widget buildChatActionButton(bool isDarkTheme, VoidCallback onPressed) {
         width: 34,
         height: 34,
         decoration: BoxDecoration(
-          color: isDarkTheme ? Colors.white : Colors.black,
+          color: AppColors.opposedPrimaryColor,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Icon(
           Icons.arrow_upward,
-          color: isDarkTheme ? Colors.black : Colors.white,
+          color: AppColors.primaryColor,
           size: 24,
         ),
       ),
@@ -533,7 +122,6 @@ Widget buildChatActionButton(bool isDarkTheme, VoidCallback onPressed) {
 class ExpandedInputScreen extends StatefulWidget {
   /// Mevcut metni ve controller’ı korumak için:
   final String initialText;
-  final bool isDarkTheme;
   final TextEditingController controller;
 
   /// Genişlemeden çıkarken güncellenmiş metni geri döndürmek için:
@@ -545,7 +133,6 @@ class ExpandedInputScreen extends StatefulWidget {
   const ExpandedInputScreen({
     Key? key,
     required this.initialText,
-    required this.isDarkTheme,
     required this.controller,
     required this.onShrink,
     this.onSend,
@@ -629,17 +216,13 @@ class _ExpandedInputScreenState extends State<ExpandedInputScreen>
   @override
   Widget build(BuildContext context) {
     final Size size = MediaQuery.of(context).size;
-    // Arka plan rengi; koyu temada InputField ve SafeArea'nın arka planı için
-    final Color bgColor = widget.isDarkTheme ? const Color(0xFF161616) : Colors.grey[300]!;
-
+    final Color bgColor = AppColors.secondaryColor;
     return WillPopScope(
       onWillPop: _onWillPop,
       child: Scaffold(
-        // extendBody kullanmadığımız için telefonun üst paneli korunur.
         resizeToAvoidBottomInset: true,
         backgroundColor: bgColor,
         body: SafeArea(
-          // SafeArea'nın arka planı da bgColor
           child: FadeTransition(
             opacity: _fadeAnimation,
             child: ScaleTransition(
@@ -650,7 +233,6 @@ class _ExpandedInputScreenState extends State<ExpandedInputScreen>
                 constraints: const BoxConstraints.expand(),
                 child: Stack(
                   children: [
-                    // Geniş moddaki input alanı; tüm ekranı kaplar.
                     Positioned.fill(
                       child: Container(
                         width: double.infinity,
@@ -675,14 +257,13 @@ class _ExpandedInputScreenState extends State<ExpandedInputScreen>
                                   left: 10, top: 10, bottom: 10, right: 60),
                             ),
                             style: TextStyle(
-                              color: widget.isDarkTheme ? Colors.white : Colors.black,
+                              color: AppColors.opposedPrimaryColor,
                               fontSize: 16,
                             ),
                           ),
                         ),
                       ),
                     ),
-                    // Shrink butonu: Sağ üstte, ikon boyutu 20x20; ikon ile metin arasında 5px alt boşluk.
                     Positioned(
                       top: 16,
                       right: 16,
@@ -690,18 +271,18 @@ class _ExpandedInputScreenState extends State<ExpandedInputScreen>
                         onTap: _shrinkAndReturn,
                         child: Padding(
                           padding: const EdgeInsets.only(bottom: 5.0),
-                          child: SvgPicture.asset(
-                            'assets/shrink.svg',
-                            width: 20,
-                            height: 20,
-                            // Açık tema: siyah, koyu tema: beyaz.
-                            color: widget.isDarkTheme ? Colors.white : Colors.black,
+                          child: Transform.rotate(
+                            angle: -1.5708, // 90 derece sola döndür (yaklaşık -π/2)
+                            child: SvgPicture.asset(
+                              'assets/arrov.svg',
+                              width: 20,
+                              height: 20,
+                              color: AppColors.opposedPrimaryColor,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                    // Gönderme (action) butonu: Sağ alt köşede, ChatScreen'deki action button stilinde.
-                    // Buton yalnızca TextField’de en az 1 karakter varsa gösteriliyor.
                     Positioned(
                       bottom: 10,
                       right: 10,
@@ -709,11 +290,9 @@ class _ExpandedInputScreenState extends State<ExpandedInputScreen>
                         duration: const Duration(milliseconds: 100),
                         child: widget.controller.text.trim().isEmpty
                             ? const SizedBox(width: 0, height: 0)
-                            : buildChatActionButton(
-                            widget.isDarkTheme, _onActionButtonPressed),
+                            : buildChatActionButton(_onActionButtonPressed),
                       ),
                     ),
-                    // Yatayda sağdan en az 20 px boşluk bırakmak için ek Container.
                     const Positioned(
                       top: 0,
                       bottom: 0,
@@ -780,9 +359,10 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
     'gemini',
     'llama',
     'hermes',
-    'chatgpt4omini',
+    'chatgpt',
     'claude3haiku',
-    'amazonnovalite'
+    'amazonnovalite',
+    'deepseekv3',
   ];
   String? modelId;
   List<String> otherServerSideModels = [];
@@ -793,6 +373,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
   late AnimationController _warningAnimationController;
   late Animation<Offset> _warningSlideAnimation;
   late Animation<double> _warningFadeAnimation;
+  late VoidCallback _downloadedModelsListener;
 
   bool _showScrollDownButton = false;
   bool hasInternetConnection = true;
@@ -810,7 +391,8 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
   Map<String, dynamic>? _userData;
 
   DateTime? _lastResetDate;
-
+  Timer? chunkTimer;
+  bool _isThinking = false;
   bool _shouldShowLimitWarningAfterFadeOut = false;
   int _fadeOutCount = 0;
   final List<String> _responseChunksQueue = [];
@@ -846,6 +428,11 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
   bool _isPhotoLoading = false;
   final ImagePicker _imagePicker = ImagePicker();
   bool _showPhotoContent = false;
+  static Timer? _cacheClearTimer;
+  bool _isInputExpanded = false;
+
+  final GlobalKey _exitButtonKey = GlobalKey();
+  final GlobalKey _accountButtonKey = GlobalKey();
 
   static const MethodChannel llamaChannel =
   MethodChannel('com.vertex.cortex/llama');
@@ -856,7 +443,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
   int _serverSideConversationLimit = 25; // default for free
   bool _conversationLimitReached = false;
   int _getConversationLimit(int subValue) {
-    // MATCHES the logic in your daily bonus system:
+    // MATCHES the logic in daily bonus system:
     //   - free =>  25
     //   - plus =>  1 or 4 => 50
     //   - pro  =>  2 or 5 => 75
@@ -875,8 +462,66 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
   bool _openedFromMenu = false;
   bool _shouldHideImmediately = false;
 
+  StreamSubscription<DocumentSnapshot>? _creditsSubscription;
+
+  List<String> _currentExtensions = [];
+  String _currentBaseSeries = '';
+  String _selectedExtensionLabel = '';
+  final GlobalKey _extensionKey = GlobalKey();
+  String _displayedExtensionLabel = "";
+  late AnimationController _extensionFadeOutController;
+  late AnimationController _extensionFadeInController;
+
+  bool _isExtensionPanelClosing = false; // Panelin kapanma animasyonunun tetiklenip tetiklenmediği
+
+  bool _isTapInsideWidget(GlobalKey key, Offset globalPosition) {
+    if (key.currentContext == null) return false;
+    final RenderBox box = key.currentContext!.findRenderObject() as RenderBox;
+    final Offset position = box.localToGlobal(Offset.zero);
+    final Size size = box.size;
+    return globalPosition.dx >= position.dx &&
+        globalPosition.dx <= position.dx + size.width &&
+        globalPosition.dy >= position.dy &&
+        globalPosition.dy <= position.dy + size.height;
+  }
+
+// AppBar’daki exit ve hesap butonlarının alanlarını kontrol eden metot.
+  bool _isTapInsideAppBarButtons(Offset globalPosition) {
+    return _isTapInsideWidget(_exitButtonKey, globalPosition) ||
+        _isTapInsideWidget(_accountButtonKey, globalPosition);
+  }
+
+  PreferredSizeWidget _buildAppBarWrapper(
+      BuildContext context,
+      AppLocalizations localizations,
+      ) {
+    return PreferredSize(
+      preferredSize: const Size.fromHeight(kToolbarHeight),
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (PointerDownEvent event) {
+          if (_extensionOverlayEntry != null &&
+              !_isTapInsideAppBarButtons(event.position)) {
+            setState(() {
+              _extensionPanelIsClosing = true;
+            });
+            _extensionOverlayEntry?.markNeedsBuild();
+          }
+        },
+        child: _buildAppBar(context, localizations),
+      ),
+    );
+  }
+
+
+  DownloadedModelsManager? _downloadedModelsManager;
+
   @override
   void didChangeDependencies() {
+    if (!_modelsLoaded) {
+      _loadModels();
+    }
+    _downloadedModelsManager ??= Provider.of<DownloadedModelsManager>(context, listen: false);
     super.didChangeDependencies();
     if (languageHasJustChanged) {
       // Force a reload if user changed language:
@@ -909,28 +554,48 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
   @override
   void initState() {
     super.initState();
-    _loadCachedUserData().then((_) {
+    _cancelCacheClearTimer();
+    if (cachedAllModels != null && cachedFilteredModels != null) {
       setState(() {
+        _allModels = List.from(cachedAllModels!);
+        _filteredModels = List.from(cachedFilteredModels!);
+        _modelsLoaded = true;
       });
-    });
+    } else {
+      _modelsLoaded = false;
+    }
     _fetchUserData();
     _updateInternetStatus();
-    if (cachedAllModels != null && cachedAllModels!.isNotEmpty) {
-      _allModels = List.from(cachedAllModels!);
-      _filteredModels = cachedFilteredModels ?? List.from(_allModels);
-      _modelsLoaded = true;
-    } else {
-      // 2) Otherwise, load fresh:
-      _loadModels();
-    }
-    _loadCachedUserData();
+    _textFieldFocusNode.addListener(() {
+      setState(() {
+        _isInputExpanded = _textFieldFocusNode.hasFocus;
+      });
+    });
+    // Remove _loadModels() from here so we don’t call it before inherited widgets are ready.
     WidgetsBinding.instance.addObserver(this);
-
+    _downloadedModelsListener = () {
+      resetModelCacheAndReload();
+    };
+    Provider.of<DownloadedModelsManager>(context, listen: false)
+        .addListener(_downloadedModelsListener);
     _searchAnimationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
     );
     _showScrollDownButton = false;
+
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      _creditsSubscription = FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .snapshots()
+          .listen((doc) {
+        setState(() {
+          _credits = doc.get('credits') ?? 0;
+        });
+      });
+    }
 
     _fetchSystemInfo();
     _fetchUserData();
@@ -1004,6 +669,12 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
         });
   }
 
+  void resetModelCacheAndReload() {
+    cachedAllModels = null;
+    cachedFilteredModels = null;
+    _loadModels();
+  }
+
   Future<void> _fetchSystemInfo() async {
     try {
       SystemInfoData info = await SystemInfoProvider.fetchSystemInfo();
@@ -1017,6 +688,32 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
         isStorageSufficient = false;
       });
     }
+  }
+
+  /// Ekrana girildiğinde varsa daha önce başlatılmış zamanlayıcıyı iptal eder.
+  void _cancelCacheClearTimer() {
+    if (_cacheClearTimer != null) {
+      _cacheClearTimer!.cancel();
+      _cacheClearTimer = null;
+      debugPrint("ChatScreen cache-clear timer canceled (screen re-entered).");
+    }
+  }
+
+  /// Ekrandan çıkıldığında 2 dakikalık zamanlayıcı başlatarak cache verilerini temizler.
+  void _startCacheClearTimer() {
+    _cacheClearTimer = Timer(const Duration(minutes: 2), () {
+      if (mounted) {
+        setState(() {
+          cachedAllModels = null;
+          cachedFilteredModels = null;
+        });
+      } else {
+        // Eğer widget tree'den kaldırılmışsa, setState() yapmadan temizleyelim.
+        cachedAllModels = null;
+        cachedFilteredModels = null;
+      }
+      debugPrint("ChatScreen cache cleared due to inactivity.");
+    });
   }
 
   Future<void> _fetchUserData() async {
@@ -1049,7 +746,15 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
         });
 
         final prefs = await SharedPreferences.getInstance();
-        await prefs.setString('cached_user_data', jsonEncode(_userData));
+        await prefs.setString(
+          'cached_user_data',
+          jsonEncode(_userData, toEncodable: (object) {
+            if (object is Timestamp) {
+              return object.toDate().toIso8601String();
+            }
+            return object;
+          }),
+        );
 
         // Günlük bonus kontrolü…
         if (_lastResetDate == null ||
@@ -1081,6 +786,51 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
         await _loadCachedUserData();
       }
     }
+  }
+
+  void _initializeModelExtensions(String mainId, String ext) {
+    // Model verisini getiriyoruz:
+    Map<String, dynamic> modelData = _getModelDataFromId(mainId);
+    // Eğer model verisinde "extensions" varsa:
+    if (modelData.isNotEmpty && modelData.containsKey('extensions')) {
+      _currentExtensions = List<String>.from(modelData['extensions']);
+    } else {
+      // Uzantı desteği yoksa:
+      _currentExtensions = [];
+      setState(() {
+        _currentBaseSeries = '';
+        _selectedExtensionLabel = '';
+        _displayedExtensionLabel = '';
+      });
+      return;
+    }
+
+    // Eğer ext boşsa, varsayılan olarak listenin ilk elemanını kullan:
+    if (ext.isEmpty && _currentExtensions.isNotEmpty) {
+      ext = _currentExtensions.first;
+    }
+
+    setState(() {
+      _currentBaseSeries = mainId; // örn. "chatgpt" veya "llama"
+      _selectedExtensionLabel = ext;
+      _displayedExtensionLabel = ext;
+    });
+
+    // AnimationController'ları başlatma kısmı aynı kalıyor.
+    _extensionFadeOutController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+    _extensionFadeInController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+    _extensionFadeOutController.addListener(() {
+      setState(() {});
+    });
+    _extensionFadeInController.addListener(() {
+      setState(() {});
+    });
   }
 
   Future<void> _updateCreditsOnFirebase({
@@ -1156,123 +906,108 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
   }
 
   Future<void> _loadModels() async {
-    if (_modelsLoaded) return;
+    if (!mounted) return; // Widget dispose edilmişse hemen çık
+    try {
+      final localizations = AppLocalizations.of(context)!;
+      final prefs = await SharedPreferences.getInstance();
+      final List<Map<String, dynamic>> allModelsData = ModelData.models(context);
+      final Set<String> addedIds = {};
+      List<ModelInfo> freshModels = [];
 
-    // Clear existing model lists
-    _allModels.clear();
-    _filteredModels.clear();
+      // 1. Yerleşik modelleri yükle
+      for (var model in allModelsData) {
+        String id = model['id'];
+        bool isServerSide = model['isServerSide'] ?? false;
+        String title = model['title'];
+        String description = model['description'];
+        String image = model['image'];
+        String producer = model['producer'];
+        String? role = model['role'];
+        bool canHandleImage = model['canHandleImage'] ?? false;
 
-    // Try to load from cache first
-    if (cachedAllModels != null && cachedAllModels!.isNotEmpty) {
-      _allModels = List.from(cachedAllModels!);
-      _filteredModels = cachedFilteredModels ?? List.from(_allModels);
-      setState(() => _modelsLoaded = true);
-      return;
-    }
+        if (addedIds.contains(id)) continue;
 
-    final prefs = await SharedPreferences.getInstance();
-    final localizations = AppLocalizations.of(context)!;
-    final List<Map<String, dynamic>> allModelsData = ModelData.models(context);
-    final Set<String> addedIds = {};
-
-    // 1. Load built-in local/server-side models
-    for (var model in allModelsData) {
-      String id = model['id'];
-      bool isServerSide = model['isServerSide'] ?? false;
-      String title = model['title'];
-      String description = model['description'];
-      String image = model['image'];
-      String producer = model['producer'];
-      String? role = model['role'];
-      bool canHandleImage = model['canHandleImage'] ?? false;
-
-      if (addedIds.contains(id)) continue;
-
-      if (!isServerSide) {
-        // Check if local model is downloaded
-        bool isDownloaded = prefs.getBool('is_downloaded_$id') ?? false;
-        if (isDownloaded) {
-          String modelFilePath = await _getModelFilePath(title);
-          _allModels.add(ModelInfo(
+        if (!isServerSide) {
+          bool isDownloaded = prefs.getBool('is_downloaded_$id') ?? false;
+          if (isDownloaded) {
+            String modelFilePath = await _getModelFilePath(title);
+            freshModels.add(ModelInfo(
+              id: id,
+              title: title,
+              description: description,
+              imagePath: image,
+              producer: producer,
+              path: modelFilePath,
+              role: role,
+              canHandleImage: canHandleImage,
+            ));
+            addedIds.add(id);
+          }
+        } else {
+          freshModels.add(ModelInfo(
             id: id,
             title: title,
             description: description,
             imagePath: image,
             producer: producer,
-            path: modelFilePath,
+            path: null,
             role: role,
             canHandleImage: canHandleImage,
           ));
           addedIds.add(id);
         }
-      } else {
-        // Add server-side models directly
-        _allModels.add(ModelInfo(
-          id: id,
-          title: title,
-          description: description,
-          imagePath: image,
-          producer: producer,
-          path: null,
-          role: role,
-          canHandleImage: canHandleImage,
-        ));
-        addedIds.add(id);
       }
-    }
 
-    // 2. Load custom models
-    Directory dir = await getApplicationDocumentsDirectory();
-    List<FileSystemEntity> files = await dir.list().toList();
-    List<File> ggufFiles = files
-        .whereType<File>()
-        .where((file) => file.path.endsWith('.gguf'))
-        .toList();
+      // 2. Özel modelleri yükle
+      Directory dir = await getApplicationDocumentsDirectory();
+      List<FileSystemEntity> files = await dir.list().toList();
+      List<File> ggufFiles = files
+          .whereType<File>()
+          .where((file) => file.path.endsWith('.gguf'))
+          .toList();
 
-    final Set<String> predefinedModelPaths = {};
-    for (var model in allModelsData) {
-      if (!(model['isServerSide'] ?? false)) {
-        String modelFilePath = await _getModelFilePath(model['title']);
-        predefinedModelPaths.add(modelFilePath);
-      }
-    }
-
-    for (var file in ggufFiles) {
-      if (!predefinedModelPaths.contains(file.path)) {
-        String title = path.basenameWithoutExtension(file.path);
-        String id = 'custom_$title';
-        if (addedIds.contains(id)) continue;
-        bool isDownloaded = prefs.getBool('is_downloaded_$title') ?? false;
-        if (isDownloaded) {
-          _allModels.add(ModelInfo(
-            id: id,
-            title: title,
-            description: localizations.myModelDescription,
-            imagePath: 'assets/customai.png',
-            producer: 'User',
-            path: file.path,
-            role: null,
-            canHandleImage: false,
-          ));
-          addedIds.add(id);
+      final Set<String> predefinedModelPaths = {};
+      for (var model in allModelsData) {
+        if (!(model['isServerSide'] ?? false)) {
+          String modelFilePath = await _getModelFilePath(model['title']);
+          predefinedModelPaths.add(modelFilePath);
         }
       }
+      for (var file in ggufFiles) {
+        if (!predefinedModelPaths.contains(file.path)) {
+          String title = path.basenameWithoutExtension(file.path);
+          String id = 'custom_$title';
+          if (addedIds.contains(id)) continue;
+          bool isDownloaded = prefs.getBool('is_downloaded_$title') ?? false;
+          if (isDownloaded) {
+            freshModels.add(ModelInfo(
+              id: id,
+              title: title,
+              description: localizations.myModelDescription,
+              imagePath: 'assets/customai.png',
+              producer: 'User',
+              path: file.path,
+              role: null,
+              canHandleImage: false,
+            ));
+            addedIds.add(id);
+          }
+        }
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _allModels = freshModels;
+        _filteredModels = List.from(_allModels);
+        _modelsLoaded = true;
+      });
+
+      // Cache güncellemesi
+      cachedAllModels = List.from(_allModels);
+      cachedFilteredModels = List.from(_filteredModels);
+    } catch (e) {
+      debugPrint('Error in _loadModels: $e');
     }
-
-    // Update filtered models FIRST
-    _filteredModels = List.from(_allModels);
-
-    // Then update cache
-    cachedAllModels = List.from(_allModels);
-    cachedFilteredModels = List.from(_filteredModels);
-
-    setState(() => _modelsLoaded = true);
-  }
-
-  void resetModelCacheAndReload() {
-    cachedAllModels = null;
-    cachedFilteredModels = null;
-    _loadModels();
   }
 
   Future<void> _loadCachedUserData() async {
@@ -1354,8 +1089,13 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
 
   bool isServerSideModel(String? modelId) {
     if (modelId == null) return false;
-    return _specialServerSideModels.contains(modelId) ||
-        otherServerSideModels.contains(modelId);
+    for (var key in _specialServerSideModels) {
+      if (modelId.startsWith(key)) return true;
+    }
+    for (var key in otherServerSideModels) {
+      if (modelId.startsWith(key)) return true;
+    }
+    return false;
   }
 
   Future<String> _getModelFilePath(String title) async {
@@ -1379,7 +1119,20 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
       await Future.delayed(const Duration(milliseconds: 300));
     }
     _isProcessingChunks = false;
+
+    if (!isServerSideModel(modelId)) {
+      final localizations = AppLocalizations.of(context)!;
+      if (messages.isNotEmpty &&
+          !messages.last.isUserMessage &&
+          messages.last.text.trim().isNotEmpty &&
+          messages.last.text != localizations.thinking) {
+        await _saveMessageToConversation(messages.last.text, false, isReported: false);
+        await _updateConversationLastMessageText(messages.last.text, photoPath: messages.last.photoPath);
+        await _updateConversationLastMessageDate(DateTime.now());
+      }
+    }
   }
+
 
   void _onMessageResponse(String token) {
     if (isWaitingForResponse &&
@@ -1555,33 +1308,51 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
     await prefs.setStringList('conversations', conversations);
   }
 
-  String _buildMemory() {
-    String memory = '';
-    for (var message in messages.reversed) {
+  String _buildFullContext() {
+    final buffer = StringBuffer();
+    for (var message in messages) {
       if (message.isUserMessage) {
-        String newMemory = message.text + ' ' + memory;
-        if (newMemory.length > 500) {
-          memory = newMemory.substring(newMemory.length - 500);
-          break;
-        } else {
-          memory = newMemory;
+        buffer.writeln("User: ${message.text}");
+        if (message.photoPath != null && message.photoPath!.isNotEmpty) {
+          buffer.writeln("User Photo: ${message.photoPath}");
+        }
+      } else {
+        buffer.writeln("${message.text}");
+        if (message.photoPath != null && message.photoPath!.isNotEmpty) {
+          buffer.writeln("${message.photoPath}");
         }
       }
     }
-    return memory.trim();
+    return buffer.toString().trim();
   }
 
-  void loadConversation(ConversationManager manager) {
+  void loadConversation(ConversationManager manager) async {
     setState(() {
       widget.conversationID = manager.conversationID;
       widget.conversationTitle = manager.conversationTitle;
       conversationID = manager.conversationID;
       conversationTitle = manager.conversationTitle;
+    });
+
+    // Eğer manager.modelId uzantı içermiyorsa, tam modelId oluştur.
+    if (!manager.modelId.contains('-')) {
+      modelId = await buildFullModelId(manager.modelId);
+    } else {
       modelId = manager.modelId;
+    }
+
+    // EK ÇÖZÜM: modelId belirlendiyse, ana kısım ve uzantıyı ayrıştırıp state’i güncelleyelim.
+    if (modelId != null) {
+      String lowerId = modelId!.toLowerCase();
+      String mainId = lowerId.contains('-') ? lowerId.split('-')[0] : lowerId;
+      String ext = lowerId.contains('-') ? lowerId.split('-')[1] : '';
+      _initializeModelExtensions(mainId, ext);
+    }
+
+    setState(() {
       modelTitle = manager.modelTitle;
       modelImagePath = manager.modelImagePath;
       isModelSelected = true;
-      // Bu durumda sohbetin menüden açıldığını belirtiyoruz:
       _openedFromMenu = true;
       isModelLoaded = manager.isModelAvailable
           ? (isServerSideModel(modelId) ? true : false)
@@ -1636,9 +1407,413 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
     });
   }
 
+  Widget _buildModelExtensionSelector() {
+    if (_currentBaseSeries.isEmpty) return const SizedBox.shrink();
+
+    return GestureDetector(
+      key: _extensionKey, // for overlay positioning
+      onTap: _showModelExtensionPanel,
+      child: Row(
+        mainAxisSize: MainAxisSize.max,
+        children: [
+          _buildAnimatedArrowIcon(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildAnimatedArrowIcon() {
+    double arrowOpacity = 1.0;
+    if (_extensionFadeOutController.isAnimating) {
+      arrowOpacity = 1.0 - _extensionFadeOutController.value;
+    } else if (_extensionFadeInController.isAnimating) {
+      arrowOpacity = _extensionFadeInController.value;
+    }
+    return AnimatedOpacity(
+      opacity: arrowOpacity,
+      duration: const Duration(milliseconds: 50),
+      child: Transform.rotate(
+        angle: 4.7124,
+        child: SvgPicture.asset(
+          'assets/arrov.svg',
+          color: (AppColors.opposedPrimaryColor).withOpacity(arrowOpacity),
+          width: 20,
+          height: 20,
+        ),
+      ),
+    );
+  }
+
+  void _animateExtensionChange(String newLabel) {
+    if (_displayedExtensionLabel == newLabel) return;
+    setState(() {
+      _displayedExtensionLabel = newLabel;
+      if (_currentBaseSeries.isNotEmpty) {
+        modelId = '$_currentBaseSeries-${newLabel.replaceAll(' ', '').toLowerCase()}';
+      } else {
+        modelId = newLabel;
+      }
+    });
+  }
+
+  OverlayEntry? _extensionOverlayEntry;
+  final GlobalKey _panelKey = GlobalKey();
+
+  void _showModelExtensionPanel() {
+    if (_extensionOverlayEntry != null) {
+      setState(() {
+        _isExtensionPanelClosing = true;
+      });
+      return;
+    }
+    _insertExtensionPanel();
+  }
+
+  String defaultExtensionFor(String mainId) {
+    if (mainId.toLowerCase() == "chatgpt") {
+      return "4o-mini";
+    } else if (mainId.toLowerCase() == "llama") {
+      return "3.3-70b";
+    }
+    // Diğer modeller için de default uzantı eklenebilir.
+    return "";
+  }
+
+  Future<String> getLastSelectedExtension(String mainId) async {
+    final prefs = await SharedPreferences.getInstance();
+    String? savedExtension = prefs.getString("last_extension_$mainId");
+    if (savedExtension == null || savedExtension.isEmpty) {
+      savedExtension = defaultExtensionFor(mainId);
+    }
+    return savedExtension;
+  }
+
+  Future<void> setLastSelectedExtension(String mainId, String extension) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString("last_extension_$mainId", extension);
+  }
+
+  Future<String> buildFullModelId(String mainId, [String? extension]) async {
+    String ext = extension ?? await getLastSelectedExtension(mainId);
+    if (ext.isNotEmpty) {
+      return "$mainId-$ext";
+    } else {
+      return mainId;
+    }
+  }
+
+  // Yardımcı fonksiyon: Uzantı adını biçimlendirir.
+  String formatExtension(String ext) {
+    List<String> parts = ext.split('-');
+    List<String> capitalizedParts = parts.map((s) {
+      if (s.isEmpty) return s;
+      return s[0].toUpperCase() + s.substring(1);
+    }).toList();
+    return capitalizedParts.join(" ");
+  }
+
+  String _formatModelTitle(String title) {
+    if (title.toLowerCase() == "chatgpt") {
+      return "GPT";
+    }
+    return title;
+  }
+
+  bool _extensionPanelIsClosing = false;
+
+  Widget _buildExtensionPanelWidget({
+    required BuildContext context,
+    required List<MapEntry<String, String>> options,
+    required String selectedExtension,
+    required String modelTitle,
+    required VoidCallback onDismiss,
+    required Function(MapEntry<String, String>) onSelect,
+  }) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final panelMaxWidth = screenWidth * 0.9;
+    final optionMinHeight = screenWidth * 0.12;
+    final horizontalPadding = screenWidth * 0.04;
+    final verticalPadding = screenWidth * 0.02;
+    final iconSize = screenWidth * 0.04;
+
+    // Panelin köşe yuvarlatma değeri
+    final panelBorderRadius = screenWidth * 0.02;
+    // Öğelerin köşe yuvarlatma değeri
+    final itemRadius = screenWidth * 0.02;
+
+    final textStyle = TextStyle(
+      color: AppColors.primaryColor,
+      fontSize: screenWidth * 0.04,
+    );
+
+    // Panelin genişliğini, içeriğe göre hesaplayalım
+    double maxTextWidth = 0;
+    for (var entry in options) {
+      final text = "${_formatModelTitle(modelTitle)} ${formatExtension(entry.key)}";
+      final TextPainter tp = TextPainter(
+        text: TextSpan(text: text, style: textStyle),
+        maxLines: 1,
+        textDirection: TextDirection.ltr,
+      );
+      tp.layout();
+      if (tp.width > maxTextWidth) {
+        maxTextWidth = tp.width;
+      }
+    }
+    double contentWidth = maxTextWidth + iconSize + (horizontalPadding * 2.5);
+    double desiredWidth = contentWidth + (screenWidth * 0.025);
+    double finalWidth = desiredWidth > panelMaxWidth ? panelMaxWidth : desiredWidth;
+
+    return Material(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(panelBorderRadius),
+      ),
+      clipBehavior: Clip.antiAlias,
+      elevation: 4.0,
+      shadowColor: Colors.black26,
+      color: AppColors.secondaryColor,
+      child: SizedBox(
+        width: finalWidth,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (int i = 0; i < options.length; i++) ...[
+              // Buton satırı
+              _buildExtensionButtonRow(
+                context: context,
+                option: options[i],
+                isSelected: options[i].key == selectedExtension,
+                modelTitle: modelTitle,
+                iconSize: iconSize,
+                horizontalPadding: horizontalPadding,
+                verticalPadding: verticalPadding,
+                minHeight: optionMinHeight,
+                // İlk, son veya orta satıra göre farklı borderRadius
+                borderRadius: _getItemBorderRadius(i, options.length, itemRadius),
+                textStyle: textStyle,
+                onTap: () => onSelect(options[i]),
+                // Orta satırlara alt çizgi ekle (son satır hariç)
+                showBottomBorder: (i < options.length - 1),
+                screenWidth: screenWidth,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildExtensionButtonRow({
+    required BuildContext context,
+    required MapEntry<String, String> option,
+    required bool isSelected,
+    required String modelTitle,
+    required double iconSize,
+    required double horizontalPadding,
+    required double verticalPadding,
+    required double minHeight,
+    required BorderRadius borderRadius,
+    required TextStyle textStyle,
+    required VoidCallback onTap,
+    required bool showBottomBorder,
+    required double screenWidth,
+  }) {
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: Material(
+        color: Colors.transparent,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          borderRadius: borderRadius,
+          onTap: onTap,
+          child: Container(
+            constraints: BoxConstraints(minHeight: minHeight),
+            alignment: Alignment.centerLeft,
+            padding: EdgeInsets.symmetric(
+              horizontal: horizontalPadding,
+              vertical: verticalPadding,
+            ),
+            decoration: BoxDecoration(
+              borderRadius: borderRadius,
+              color: isSelected
+                  ? AppColors.quaternaryColor  // <-- Güncellendi: Seçili buton rengi
+                  : Colors.transparent,
+              border: showBottomBorder
+                  ? Border(
+                bottom: BorderSide(
+                  color: AppColors.secondaryColor, // Panelin genel rengi
+                  width: screenWidth * 0.003,
+                ),
+              )
+                  : null,
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // İkon her durumda opposedPrimaryColor, seçili ise biraz daha büyük görünecek
+                Transform.scale(
+                  scale: isSelected ? 1.2 : 1.0,
+                  child: SvgPicture.asset(
+                    'assets/extension.svg',
+                    width: iconSize,
+                    height: iconSize,
+                    color: AppColors.opposedPrimaryColor,
+                  ),
+                ),
+                SizedBox(width: horizontalPadding * 0.5),
+                Flexible(
+                  child: Text(
+                    "${_formatModelTitle(modelTitle)} ${formatExtension(option.key)}",
+                    style: textStyle.copyWith(
+                      color: AppColors.opposedPrimaryColor,
+                      fontWeight: isSelected ? FontWeight.w500 : FontWeight.normal,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    softWrap: false,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// İlk, son veya tek öğe durumuna göre farklı köşe yarıçapı veren metod
+  BorderRadius _getItemBorderRadius(int index, int total, double radius) {
+    if (total == 1) {
+      // Tek öğe: tüm köşeler yuvarlak
+      return BorderRadius.circular(radius);
+    } else if (index == 0) {
+      // İlk öğe: üst köşeler yuvarlak
+      return BorderRadius.only(
+        topLeft: Radius.circular(radius),
+        topRight: Radius.circular(radius),
+      );
+    } else if (index == total - 1) {
+      // Son öğe: alt köşeler yuvarlak
+      return BorderRadius.only(
+        bottomLeft: Radius.circular(radius),
+        bottomRight: Radius.circular(radius),
+      );
+    } else {
+      // Ortadaki öğeler: düz kenar
+      return BorderRadius.zero;
+    }
+  }
+
+  void _insertExtensionPanel() {
+    if (_currentExtensions.isEmpty) return;
+    // Panel açılırken kapanma bayrağını sıfırla:
+    _extensionPanelIsClosing = false;
+
+    final options = _currentExtensions.map((ext) => MapEntry(ext, ext)).toList();
+    final overlay = Overlay.of(context);
+
+    final RenderBox? renderBox =
+    _extensionKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+
+    final Offset offset =
+    renderBox.localToGlobal(Offset(0, renderBox.size.height + 12));
+
+    OverlayEntry entry = OverlayEntry(
+      builder: (BuildContext context) {
+        final screenWidth = MediaQuery.of(context).size.width;
+        final panelWidth = screenWidth * 0.9;
+        final horizontalMargin = (screenWidth - panelWidth) / 2;
+        // AppBar alt sınırı
+        final double appBarBottom =
+            MediaQuery.of(context).padding.top + kToolbarHeight;
+
+        return StatefulBuilder(
+          builder: (BuildContext context, setState) {
+            return Stack(
+              children: [
+                // AppBar altındaki alan: onTap ile kapanmayı tetikleyelim.
+                Positioned(
+                  top: appBarBottom,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onTap: () {
+                      setState(() {
+                        _extensionPanelIsClosing = true;
+                      });
+                    },
+                    child: Container(color: Colors.transparent),
+                  ),
+                ),
+                // Uzantı paneli
+                Positioned(
+                  top: offset.dy,
+                  left: horizontalMargin,
+                  right: horizontalMargin,
+                  child: TweenAnimationBuilder<double>(
+                    tween: Tween<double>(
+                      begin: _extensionPanelIsClosing ? 1.0 : 0.4,
+                      end: _extensionPanelIsClosing ? 0.4 : 1.0,
+                    ),
+                    duration: const Duration(milliseconds: 50),
+                    curve: Curves.easeOut,
+                    builder: (context, scale, child) {
+                      return Transform.scale(
+                        scale: scale,
+                        alignment: Alignment.topCenter,
+                        child: child,
+                      );
+                    },
+                    onEnd: () {
+                      if (_extensionPanelIsClosing) removeExtensionOverlay();
+                    },
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: _buildExtensionPanelWidget(
+                        context: context,
+                        options: options,
+                        selectedExtension: _displayedExtensionLabel,
+                        modelTitle: modelTitle ?? "",
+                        onDismiss: () {
+                          setState(() {
+                            _extensionPanelIsClosing = true;
+                          });
+                        },
+                        onSelect: (selectedEntry) {
+                          _animateExtensionChange(selectedEntry.key);
+                          setState(() {
+                            _extensionPanelIsClosing = true;
+                          });
+                        },
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    overlay.insert(entry);
+    _extensionOverlayEntry = entry;
+  }
+
+  void removeExtensionOverlay() {
+    if (_extensionOverlayEntry != null) {
+      _extensionOverlayEntry!.remove();
+      _extensionOverlayEntry = null;
+      _extensionPanelIsClosing = false;
+    }
+  }
+
   void _selectModel(ModelInfo model) async {
-    // Yeni sohbet başlamadan önce eski verileri temizle:
-    await resetConversation(); // conversationID, widget.conversationID, conversationTitle, messages vs. sıfırlanır
+    // Önce eski sohbeti temizleyin.
+    await resetConversation();
 
     setState(() {
       modelId = model.id;
@@ -1649,8 +1824,25 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
       modelPath = model.path;
       role = model.role;
       canHandleImage = model.canHandleImage;
-      // Burada conversationID ve conversationTitle sıfırlı kalmalıdır.
+      // Konuşma ID'si ve başlık temiz bırakılıyor.
     });
+
+    // Model id'sinde uzantı varsa parçalayalım.
+    String mainId;
+    String ext;
+    if (model.id.contains('-')) {
+      List<String> parts = model.id.split('-');
+      mainId = parts[0];
+      ext = parts[1];
+    } else {
+      mainId = model.id;
+      ext = await getLastSelectedExtension(mainId);
+    }
+
+    // Şimdi uzantı panelini başlatın.
+    _initializeModelExtensions(mainId, ext);
+
+    modelId = await buildFullModelId(mainId, ext);
 
     if (isServerSideModel(model.id)) {
       setState(() {
@@ -1672,6 +1864,40 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
         FocusScope.of(context).requestFocus(_textFieldFocusNode);
       });
     });
+  }
+
+  Future<void> onExtensionSelected(String newExtension) async {
+    // modelId'nin ana kısmını alın:
+    String? mainId = modelId!.contains('-') ? modelId?.split('-')[0] : modelId;
+    // Yeni tam model id oluşturun:
+    String newFullModelId = "$mainId-$newExtension";
+    // Kullanıcının seçimini kaydedin:
+    await setLastSelectedExtension(mainId!, newExtension);
+    // Yeni model id'yi state'e atayın:
+    setState(() {
+      modelId = newFullModelId;
+    });
+    // Eğer aktif bir sohbet varsa, conversation entry güncelleyin:
+    if (conversationID != null) {
+      await _updateConversationModelId(newFullModelId);
+    }
+  }
+
+  /// Conversation entry içindeki modelId kısmını güncelleyen fonksiyon:
+  Future<void> _updateConversationModelId(String newModelId) async {
+    final prefs = await SharedPreferences.getInstance();
+    List<String> conversations = prefs.getStringList('conversations') ?? [];
+    int index = conversations.indexWhere((c) => c.startsWith('$conversationID|'));
+    if (index != -1) {
+      List<String> parts = conversations[index].split('|');
+      // modelId kısmı index 2'de saklanıyorsa:
+      if (parts.length >= 3) {
+        parts[2] = newModelId;
+        String newEntry = parts.join('|');
+        conversations[index] = newEntry;
+        await prefs.setStringList('conversations', conversations);
+      }
+    }
   }
 
   Future<void> resetConversation({bool resetModel = false}) async {
@@ -1697,7 +1923,6 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
     final prefs = await SharedPreferences.getInstance();
     List<String> conversations = prefs.getStringList('conversations') ?? [];
 
-    // Sohbet başlığı boş ise "🖼" ikonu kullan
     if (conversationName.trim().isEmpty) {
       conversationName = "🖼";
     }
@@ -1711,19 +1936,22 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
       lastMessagePhotoPath = messages.last.photoPath ?? '';
     }
 
-    // Son mesaj yalnızca fotoğraftan ibaretse "PHOTO_ONLY" olarak kaydet
     if (lastMessageText.trim().isEmpty && lastMessagePhotoPath.isNotEmpty) {
       lastMessageText = "PHOTO_ONLY";
     }
-
     String sanitizedLastMessageText = lastMessageText.replaceAll('|', ' ');
-    String sanitizedLastMessagePhotoPath =
-    lastMessagePhotoPath.replaceAll('|', ' ');
+    String sanitizedLastMessagePhotoPath = lastMessagePhotoPath.replaceAll('|', ' ');
 
+    // modelId'yi kaydederken; eğer modelId zaten tam kimlik (örneğin "chatgpt-4o-mini") içeriyorsa
+    // direkt saklayın. Eğer sadece ana kısım ise, varsayılan uzantıyı ekleyin.
+    String storedModelId = modelId ?? "";
+    if (!storedModelId.contains('-')) {
+      storedModelId = await buildFullModelId(storedModelId);
+    }
+    // Kaydı: conversationID|conversationTitle|modelIdWithExtension|tarih|mesaj|foto
     String conversationEntry =
-        '$conversationID|$conversationName|$modelId|$lastMessageDateString|$sanitizedLastMessageText|$sanitizedLastMessagePhotoPath';
+        '$conversationID|$conversationName|$storedModelId|$lastMessageDateString|$sanitizedLastMessageText|$sanitizedLastMessagePhotoPath';
 
-    // Aynı conversationID daha önce yoksa ekle:
     if (!conversations.any((c) => c.startsWith('$conversationID|'))) {
       conversations.add(conversationEntry);
       await prefs.setStringList('conversations', conversations);
@@ -1761,21 +1989,30 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
         orElse: () => {});
   }
 
-  void _updateModelDataFromId() {
+  Future<void> _updateModelDataFromId() async {
     if (modelId != null) {
-      Map<String, dynamic> modelData = _getModelDataFromId(modelId!);
+      final lowerId = modelId!.toLowerCase();
+      // Ana model id’sini alıyoruz:
+      String mainId = lowerId.contains('-') ? lowerId.split('-')[0] : lowerId;
+      // Eğer modelId uzantı içermiyorsa, SharedPreferences’ten son seçili uzantıyı alalım:
+      String ext = lowerId.contains('-') ? lowerId.split('-')[1] : await getLastSelectedExtension(mainId);
+
+      // Model verisini ana id üzerinden alalım:
+      Map<String, dynamic> modelData = _getModelDataFromId(mainId);
       if (modelData.isNotEmpty) {
         setState(() {
           modelTitle = modelData['title'];
           modelDescription = modelData['description'];
           modelImagePath = modelData['image'];
           modelProducer = modelData['producer'];
+          // Server-side modelde modelPath olmayabilir.
           modelPath = modelData['isServerSide'] == true ? null : modelPath;
         });
       }
+      // Modelin ana serisini ve uzantısını ayarlayalım:
+      _initializeModelExtensions(mainId, ext);
     }
   }
-
 
   Future<void> _onRegenerate(int modelIndex) async {
     // 1) Stop any ongoing response
@@ -1881,74 +2118,28 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
     String? textFromButton,
     bool isRegenerate = false,
     int? regenerateAiIndex,
-    // Eğer orijinal kullanıcı mesajı yalnızca fotoğraf ise
     String? regeneratePhotoPath,
   }) async {
     final localizations = AppLocalizations.of(context)!;
     final String text = textFromButton ?? _controller.text.trim();
 
-    // 1) Eğer bu bir regenerasyon isteği değilse ve kullanıcı hiçbir şey yazmamış + fotoğraf yoksa => çık.
-    final hasNewPhoto = _selectedPhoto != null;
-    if (!isRegenerate && text.isEmpty && !hasNewPhoto) {
-      return;
-    }
+    final bool hasNewPhoto = _selectedPhoto != null;
+    if (!isRegenerate && text.isEmpty && !hasNewPhoto) return;
 
-    // 2) Güncel kullanıcı verilerini getir ve server-side model kullanıyorsa kredi kontrolü yap.
     FocusScope.of(context).unfocus();
-    await _fetchUserData(); // _credits vb. güncelleniyor
+    await _fetchUserData();
 
-    if (isServerSideModel(modelId)) {
-      bool hadPhoto = hasNewPhoto || (regeneratePhotoPath != null);
-      int cost = otherServerSideModels.contains(modelId) ? 10 : 20;
-      if (hadPhoto) {
-        cost = 30; // örneğin, fotoğraf gönderimi daha pahalı
-      }
-      int totalUserCredits = _credits + _bonusCredits;
-      if (totalUserCredits < cost) {
-        final notificationService =
-        Provider.of<NotificationService>(context, listen: false);
-        final screenHeight = MediaQuery.of(context).size.height;
-        notificationService.showNotification(
-          message: localizations.notEnoughCredits,
-          isSuccess: false,
-          fontSize: 0.032,
-          oneLine: false,
-          bottomOffset: 0.08,
-          duration: Duration(seconds: 10)
-        );
-        return; // Yetersiz kredi olduğundan gönderme iptal ediliyor.
-      }
-    }
+    int? userMessageIndex; // Track user message position
+    int? aiMessageIndex;   // Track AI message position
 
-    // 3) Fotoğraf seçimini işle
-    DateTime now = DateTime.now();
-    String? photoPath;
-    if (_selectedPhoto != null) {
-      setState(() {
-        photoPath = _selectedPhoto!.path;
-        _selectedPhoto = null;
-      });
-      // UI için küçük bir gecikme
-      await Future.delayed(const Duration(milliseconds: 200));
-    }
-    if (isRegenerate && regeneratePhotoPath != null) {
-      // Fotoğraf-only kullanıcı mesajı regenerasyonu için
-      photoPath = regeneratePhotoPath;
-    }
-
-    // 4) Eğer mevcut konuşma yoksa (conversationID == null) yeni bir konuşma oluştur.
     if (!isRegenerate && conversationID == null) {
       if (isServerSideModel(modelId)) {
         if (!hasInternetConnection) {
           _showInternetRequiredNotification();
           return;
         }
-      }
-      if (isServerSideModel(modelId)) {
         if (_serverSideConversationsCount >= _serverSideConversationLimit) {
-          final notificationService =
-          Provider.of<NotificationService>(context, listen: false);
-          notificationService.showNotification(
+          Provider.of<NotificationService>(context, listen: false).showNotification(
             message: localizations.youReachedConversationLimit,
             isSuccess: false,
             fontSize: 0.032,
@@ -1964,72 +2155,61 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
                   .update({'conversations': FieldValue.increment(1)});
               setState(() {
                 _serverSideConversationsCount += 1;
-                _conversationLimitReached =
-                    _serverSideConversationsCount >= _serverSideConversationLimit;
+                _conversationLimitReached = _serverSideConversationsCount >= _serverSideConversationLimit;
               });
             } catch (e) {
               print("Error incrementing conversation count: $e");
             }
           }
         }
+        conversationID = uuid.v4();
+        conversationTitle = (text.trim().isEmpty && hasNewPhoto) ? "🖼" : (text.length > 28 ? text.substring(0, 28) : text);
+        await _saveConversationTitle(conversationTitle!);
+        await _saveConversation(conversationTitle!);
+        mainScreenKey.currentState?.menuScreenKey.currentState?.reloadConversations();
+
+        setState(() {
+          userMessageIndex = messages.length; // Record user message index
+          messages.add(Message(
+            text: text,
+            isUserMessage: true,
+            photoPath: hasNewPhoto ? _selectedPhoto!.path : null,
+            isPhotoUploading: true,
+          ));
+          _controller.clear();
+          isWaitingForResponse = true;
+          _isSendButtonVisible = false;
+          responseStopped = false;
+          _creditsDeducted = false;
+          _isThinking = true;
+          aiMessageIndex = messages.length; // Record AI message index
+          messages.add(Message(
+            text: localizations.thinking,
+            isUserMessage: false,
+          ));
+        });
+        await _scrollToBottom(forceScroll: true);
+        await _saveMessageToConversation(text, true, isReported: false, photoPath: hasNewPhoto ? _selectedPhoto!.path : null);
+        await _updateConversationLastMessageText(text, photoPath: hasNewPhoto ? _selectedPhoto!.path : null);
+        await _updateConversationLastMessageDate(DateTime.now());
       }
-
-      conversationID = uuid.v4();
-      conversationTitle =
-      (text.trim().isEmpty && photoPath != null) ? "🖼" : (text.length > 28 ? text.substring(0, 28) : text);
-
-      await _saveConversationTitle(conversationTitle!);
-      await _saveConversation(conversationTitle!);
-      mainScreenKey.currentState
-          ?.menuScreenKey
-          .currentState
-          ?.reloadConversations();
-
-      // Kullanıcının mesajını UI’ya ekle ve kaydet
-      setState(() {
-        messages.add(Message(
-          text: text,
-          isUserMessage: true,
-          photoPath: photoPath,
-          isPhotoUploading: true,
-        ));
-        _controller.clear();
-        isWaitingForResponse = true;
-        _isSendButtonVisible = false;
-        responseStopped = false;
-        _creditsDeducted = false;
-      });
-      await _scrollToBottom(forceScroll: true);
-      await _saveMessageToConversation(text, true,
-          isReported: false, photoPath: photoPath);
-      await _updateConversationLastMessageText(text, photoPath: photoPath);
-      await _updateConversationLastMessageDate(now);
-
-      // AI placeholder mesajı (“düşünüyor”) ekle – bu mesaj henüz kaydedilmiyor.
-      setState(() {
-        messages.add(Message(
-          text: isServerSideModel(modelId) ? localizations.thinking : '',
-          isUserMessage: false,
-        ));
-      });
-    }
-    // 5) Regenerasyon isteğinde mevcut AI mesajını “düşünüyor” olarak ayarla.
-    else if (isRegenerate && regenerateAiIndex != null) {
+    } else if (isRegenerate && regenerateAiIndex != null) {
       setState(() {
         messages[regenerateAiIndex].text = localizations.thinking;
         isWaitingForResponse = true;
         _isSendButtonVisible = false;
         responseStopped = false;
         _creditsDeducted = false;
+        _isThinking = true;
+        aiMessageIndex = regenerateAiIndex; // Use existing AI message index
       });
-    }
-    // 6) Mevcut konuşmada kullanıcı yeni mesaj gönderiyorsa.
-    else {
+    } else {
       setState(() {
+        userMessageIndex = messages.length;
         messages.add(Message(
           text: text,
           isUserMessage: true,
-          photoPath: photoPath,
+          photoPath: hasNewPhoto ? _selectedPhoto!.path : null,
           isPhotoUploading: true,
         ));
         _controller.clear();
@@ -2037,122 +2217,139 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
         _isSendButtonVisible = false;
         responseStopped = false;
         _creditsDeducted = false;
-      });
-      await _saveMessageToConversation(text, true,
-          isReported: false, photoPath: photoPath);
-      await _updateConversationLastMessageText(text, photoPath: photoPath);
-      await _updateConversationLastMessageDate(now);
-      setState(() {
+        _isThinking = true;
+        aiMessageIndex = messages.length;
         messages.add(Message(
-          text: isServerSideModel(modelId) ? localizations.thinking : '',
+          text: localizations.thinking,
           isUserMessage: false,
         ));
       });
+      await _saveMessageToConversation(text, true, isReported: false, photoPath: hasNewPhoto ? _selectedPhoto!.path : null);
+      await _updateConversationLastMessageText(text, photoPath: hasNewPhoto ? _selectedPhoto!.path : null);
+      await _updateConversationLastMessageDate(DateTime.now());
     }
 
-    // Kullanıcının ekranda en altta olup olmadığı takip ediliyor.
-    bool autoScrollOnResponse = _isUserAtBottom();
+    final String currentConversationId = conversationID ?? "";
 
-    // 7) Mesajı modele gönder: yerel model ya da server-side model.
+    DateTime now = DateTime.now();
+    String? photoPath;
+    if (hasNewPhoto) {
+      setState(() {
+        photoPath = _selectedPhoto!.path;
+        _selectedPhoto = null;
+      });
+      await Future.delayed(const Duration(milliseconds: 200));
+    }
+    if (isRegenerate && regeneratePhotoPath != null) {
+      photoPath = regeneratePhotoPath;
+    }
+
     try {
-      // 7a) Yerel (cihaz içi) model ise:
       if (!isServerSideModel(modelId)) {
         llamaChannel.invokeMethod('sendMessage', {
           'message': text,
           'photoPath': photoPath,
         });
         _startResponseTimeout();
-      }
-      // 7b) Server-side model ise; streaming chunk’lar ile.
-      else {
-        final memory = _buildMemory();
+      } else {
+        final memory = _buildFullContext();
         bool hasReceivedFirstChunk = false;
         final partialBuffer = StringBuffer();
-        Timer? chunkTimer;
-
         chunkTimer = Timer.periodic(const Duration(milliseconds: 150), (timer) {
-          if (!mounted || responseStopped) return;
+          if (!mounted || responseStopped || (conversationID != currentConversationId)) {
+            timer.cancel();
+            return;
+          }
           if (partialBuffer.isNotEmpty) {
-            // İlk chunk’da placeholder (“düşünüyor”) temizleniyor.
             if (!hasReceivedFirstChunk) {
               if (isRegenerate && regenerateAiIndex != null) {
                 setState(() {
                   messages[regenerateAiIndex].text = '';
+                  _isThinking = false;
                 });
-              } else {
+              } else if (aiMessageIndex != null && aiMessageIndex! < messages.length) {
                 setState(() {
-                  messages.last.text = '';
+                  messages[aiMessageIndex!].text = '';
+                  _isThinking = false;
                 });
               }
               hasReceivedFirstChunk = true;
             }
-            if (partialBuffer.isNotEmpty) {
-              setState(() {
-                messages.last.text += partialBuffer.toString();
-                partialBuffer.clear();
-              });
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                _attemptScrollToBottom();
-              });
-            }
+            setState(() {
+              if (isRegenerate && regenerateAiIndex != null) {
+                messages[regenerateAiIndex].text += partialBuffer.toString();
+              } else if (aiMessageIndex != null && aiMessageIndex! < messages.length) {
+                messages[aiMessageIndex!].text += partialBuffer.toString();
+              }
+              partialBuffer.clear();
+            });
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _attemptScrollToBottom();
+            });
             if (_isUserAtBottom()) {
               _scrollToBottom();
             }
           }
         });
-
         String finalResponse = '';
-        switch (modelId) {
-
-          case 'gemini':
+        if (modelId != null) {
+          if (modelId!.startsWith('gemini')) {
             finalResponse = await apiService.getGeminiResponse(
               text,
               memory,
               photoPath: photoPath,
               onStreamChunk: (chunk) => partialBuffer.write(chunk),
+              model: modelId!,
             );
-            break;
-          case 'llama':
+          } else if (modelId!.startsWith('llama')) {
             finalResponse = await apiService.getLlamaResponse(
               text,
               memory,
               photoPath: photoPath,
               onStreamChunk: (chunk) => partialBuffer.write(chunk),
+              model: modelId!,
             );
-            break;
-          case 'hermes':
+          } else if (modelId!.startsWith('hermes')) {
             finalResponse = await apiService.getHermesResponse(
               text,
               memory,
               photoPath: photoPath,
               onStreamChunk: (chunk) => partialBuffer.write(chunk),
+              model: modelId!,
             );
-            break;
-          case 'chatgpt4omini':
+          } else if (modelId!.startsWith('chatgpt')) {
             finalResponse = await apiService.getChatGPTResponse(
               text,
               memory,
               photoPath: photoPath,
               onStreamChunk: (chunk) => partialBuffer.write(chunk),
+              model: modelId!,
             );
-            break;
-          case 'claude3haiku':
+          } else if (modelId!.startsWith('claude')) {
             finalResponse = await apiService.getClaudeResponse(
               text,
               memory,
               photoPath: photoPath,
               onStreamChunk: (chunk) => partialBuffer.write(chunk),
+              model: modelId!,
             );
-            break;
-          case 'amazonnovalite':
+          } else if (modelId!.startsWith('nova')) {
             finalResponse = await apiService.getNovaResponse(
               text,
               memory,
               photoPath: photoPath,
               onStreamChunk: (chunk) => partialBuffer.write(chunk),
+              model: modelId!,
             );
-            break;
-          default:
+          } else if (modelId!.startsWith('deepseek')) {
+            finalResponse = await apiService.getDeepseekResponse(
+              text,
+              memory,
+              photoPath: photoPath,
+              onStreamChunk: (chunk) => partialBuffer.write(chunk),
+              model: modelId!,
+            );
+          } else {
             finalResponse = await apiService.getCharacterResponse(
               role: role ?? '',
               userInput: text,
@@ -2160,26 +2357,36 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
               photoPath: photoPath,
               onStreamChunk: (chunk) => partialBuffer.write(chunk),
             );
+          }
         }
 
-        chunkTimer.cancel();
+        chunkTimer?.cancel();
+        chunkTimer = null;
+
+        if (conversationID != currentConversationId) {
+          return;
+        }
 
         if (partialBuffer.isNotEmpty) {
           if (!hasReceivedFirstChunk) {
-            setState(() {
-              if (isRegenerate && regenerateAiIndex != null) {
+            if (isRegenerate && regenerateAiIndex != null) {
+              setState(() {
                 messages[regenerateAiIndex].text = '';
-              } else {
-                messages.last.text = '';
-              }
-            });
+                _isThinking = false;
+              });
+            } else if (aiMessageIndex != null && aiMessageIndex! < messages.length) {
+              setState(() {
+                messages[aiMessageIndex!].text = '';
+                _isThinking = false;
+              });
+            }
             hasReceivedFirstChunk = true;
           }
           setState(() {
             if (isRegenerate && regenerateAiIndex != null) {
               messages[regenerateAiIndex].text += partialBuffer.toString();
-            } else {
-              messages.last.text += partialBuffer.toString();
+            } else if (aiMessageIndex != null && aiMessageIndex! < messages.length) {
+              messages[aiMessageIndex!].text += partialBuffer.toString();
             }
             partialBuffer.clear();
           });
@@ -2188,6 +2395,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
         setState(() {
           isWaitingForResponse = false;
           _isSendButtonVisible = _controller.text.isNotEmpty;
+          _isThinking = false;
         });
 
         if (isRegenerate && regenerateAiIndex != null) {
@@ -2200,24 +2408,15 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
               aiIndex: regenerateAiIndex,
             );
           }
-        }
-        else {
-          if (messages.isNotEmpty && !messages.last.isUserMessage) {
-            if (messages.last.text.isEmpty) {
-              messages.last.text = finalResponse;
-            }
-            if (messages.last.text != localizations.thinking) {
-              await _saveMessageToConversation(
-                messages.last.text,
-                false,
-                isReported: false,
-              );
-              await _updateConversationLastMessageText(
-                messages.last.text,
-                photoPath: messages.last.photoPath,
-              );
-              await _updateConversationLastMessageDate(DateTime.now());
-            }
+        } else if (aiMessageIndex != null && aiMessageIndex! < messages.length) {
+          if (messages[aiMessageIndex!].text.isEmpty) {
+            messages[aiMessageIndex!].text = finalResponse;
+          }
+          if (messages[aiMessageIndex!].text != localizations.thinking) {
+            await _saveMessageToConversation(messages[aiMessageIndex!].text, false, isReported: false);
+            await _updateConversationLastMessageText(messages[aiMessageIndex!].text, photoPath: messages[aiMessageIndex!].photoPath);
+            await _updateConversationLastMessageDate(DateTime.now());
+            await _updateConversationModelId(modelId!);
           }
         }
         await _deductCredits(hadPhoto: photoPath != null);
@@ -2225,14 +2424,13 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
     } catch (e) {
       setState(() {
         isWaitingForResponse = false;
+        _isThinking = false;
         if (isRegenerate && regenerateAiIndex != null) {
           messages[regenerateAiIndex].text = 'Error: $e';
+        } else if (aiMessageIndex != null && aiMessageIndex! < messages.length) {
+          messages[aiMessageIndex!].text = 'Error: $e';
         } else {
-          if (messages.isNotEmpty && !messages.last.isUserMessage) {
-            messages.last.text = 'Error: $e';
-          } else {
-            messages.add(Message(text: 'Error: $e', isUserMessage: false));
-          }
+          messages.add(Message(text: 'Error: $e', isUserMessage: false));
         }
       });
     }
@@ -2249,71 +2447,40 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
   }
 
   Future<void> _stopResponse() async {
-    final localizations = AppLocalizations.of(context)!;
+    if (responseStopped || !isWaitingForResponse) return;
 
-    // Eğer zaten durdurulmuşsa, çık.
-    if (responseStopped) return;
+    chunkTimer?.cancel();
+    chunkTimer = null;
 
-    // Streaming isteğini iptal et
-    apiService.cancelRequests();
+    setState(() {
+      responseStopped = true;
+      isWaitingForResponse = false;
+      _isSendButtonVisible = _controller.text.isNotEmpty;
+    });
 
-    // Server-side model kullanılıyorsa, henüz düşüm yapılmadıysa kredileri düş
-    if (isServerSideModel(modelId)) {
-      await _deductCredits(hadPhoto: false);
-    }
+    // Find the last AI message
+    int lastAiIndex = messages.lastIndexWhere((m) => !m.isUserMessage);
+    if (lastAiIndex == -1) return;
 
-    if (isWaitingForResponse) {
+    if (_isThinking) {
       setState(() {
-        responseStopped = true;
-        isWaitingForResponse = false;
-        _isSendButtonVisible = _controller.text.isNotEmpty;
+        messages[lastAiIndex].shouldFadeOut = true;
+        _isThinking = false; // Reset thinking state immediately
       });
-      responseTimer?.cancel();
-
-      // Son AI mesajı boş veya "düşünüyor" ise fade-out tetikleyelim.
-      if (messages.isNotEmpty) {
-        final int lastAiIndex = messages.lastIndexWhere((m) => !m.isUserMessage);
-        if (lastAiIndex != -1) {
-          final msg = messages[lastAiIndex];
-          final lastText = msg.text.trim();
-          if (lastText.isEmpty || lastText == localizations.thinking) {
-            // Mesajın shouldFadeOut alanını true yapıp, AIMessageTile'dan
-            // onFadeOutComplete callback’i bekleyelim.
-            setState(() {
-              msg.shouldFadeOut = true;
-            });
-            // Not: Mesajı burada remove etmiyoruz, onun widget’ı
-            // fade-out animasyonu tamamlandığında onFadeOutComplete tetiklenecek.
-          }
-        }
-      }
-    } else {
-      // Eğer response beklenmiyorsa sadece durdur.
-      setState(() {
-        isWaitingForResponse = false;
-        _isSendButtonVisible = _controller.text.isNotEmpty;
-      });
-      responseTimer?.cancel();
     }
   }
 
   Future<void> _deductCredits({bool hadPhoto = false}) async {
-    // Sunucu tarafı bir model kullanıyorsak ve henüz düşüm yapılmadıysa:
-    if (isServerSideModel(modelId) && !_creditsDeducted) {
-      // Her modele göre farklı cost
-      int deduction;
-      if (otherServerSideModels.contains(modelId)) {
-        deduction = 10;
-      } else {
-        deduction = hadPhoto ? 30 : 20;
-      }
+    if (!_creditsDeducted) {
+      int baseDeduction = (role != null && role!.isNotEmpty) ? 10 : 20;
+      int photoAddition = hadPhoto ? 50 : 0;
+      int totalDeduction = baseDeduction + photoAddition;
 
-      int remainingDeduction = deduction;
-
-      // Önce bonusCredits'ten düş
+      int remainingDeduction = totalDeduction;
       int updatedBonus = _bonusCredits;
       int updatedCredits = _credits;
 
+      // Önce bonus krediden düşelim.
       if (updatedBonus >= remainingDeduction) {
         updatedBonus -= remainingDeduction;
         remainingDeduction = 0;
@@ -2322,15 +2489,15 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
         updatedBonus = 0;
       }
 
-      // Hâlâ varsa, normal credits’ten devam et
+      // Hâlâ düşülecek kredi varsa normal kredilerden düşelim.
       if (remainingDeduction > 0) {
         updatedCredits -= remainingDeduction;
         if (updatedCredits < 0) {
-          updatedCredits = 0; // negatif olmasın
+          updatedCredits = 0;
         }
       }
 
-      // Firestore’a yaz
+      // Firebase üzerinde güncelleme yapıyoruz.
       await _updateCreditsOnFirebase(
         newCredits: updatedCredits,
         newBonusCredits: updatedBonus,
@@ -2454,8 +2621,6 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
     setState(() {
       _showPhotoContent = false;
     });
-    // Eğer panelin kapanma animasyonunda AnimatedSwitcher'ın fade-out
-    // efekti ile kaybolmasını isterseniz bir miktar gecikme ekleyebilirsiniz.
     Future.delayed(const Duration(milliseconds: 300), () {
       setState(() {
         _selectedPhoto = null;
@@ -2463,78 +2628,86 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
     });
   }
 
-  Widget _buildActionButton(bool isDarkTheme) {
-    final screenWidth = MediaQuery.of(context).size.width;
+  Widget _buildActionButton() {
+    final bool isEnabled = _isSendButtonEnabled;
+    final bool isOffline = !hasInternetConnection;
+    final bool isSendingState = isWaitingForResponse;
+    final Duration currentDuration = isEnabled
+        ? const Duration(milliseconds: 100)
+        : const Duration(milliseconds: 200);
 
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 100),
-      transitionBuilder: (Widget child, Animation<double> animation) {
-        return ScaleTransition(scale: animation, child: child);
-      },
-      child: _isSending
-          ? GestureDetector(
-        key: const ValueKey('sendButtonOpacity'),
-        onTap: null,
-        child: Opacity(
-          opacity: 0.5,
-          child: Container(
-            width: screenWidth * 0.09,
-            height: screenWidth * 0.09,
-            decoration: BoxDecoration(
-              color: isDarkTheme ? Colors.white : Colors.black,
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Icon(
-              Icons.arrow_upward,
-              color: isDarkTheme ? Colors.black : Colors.white,
-              size: screenWidth * 0.06,
-            ),
-          ),
+    Color backgroundColor;
+    if (isSendingState || isEnabled) {
+      backgroundColor = AppColors.opposedPrimaryColor;
+    } else if (isOffline) {
+      backgroundColor = AppColors.opposedPrimaryColor.withOpacity(0.1);
+    } else {
+      backgroundColor = AppColors.opposedPrimaryColor.withOpacity(0.06);
+    }
+
+    Color iconColor;
+    if (isSendingState || isEnabled) {
+      iconColor = AppColors.primaryColor;
+    } else {
+      iconColor = AppColors.tertiaryColor;
+    }
+
+    Widget sendButton = GestureDetector(
+      key: const ValueKey('sendButton'),
+      onTap: isEnabled ? _sendMessage : null,
+      child: AnimatedContainer(
+        duration: currentDuration,
+        curve: Curves.easeOut,
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+          color: backgroundColor,
+          shape: BoxShape.circle,
         ),
-      )
-          : isWaitingForResponse
-          ? GestureDetector(
-        key: const ValueKey('stopButton'),
-        onTap: _stopResponse,
-        child: Container(
-          width: screenWidth * 0.09,
-          height: screenWidth * 0.09,
-          decoration: BoxDecoration(
-            color: isDarkTheme ? Colors.white : Colors.black,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Icon(
-            Icons.stop,
-            color: isDarkTheme ? Colors.black : Colors.white,
-            size: screenWidth * 0.06,
-          ),
-        ),
-      )
-          : (!_isInputEmpty || _selectedPhoto != null)
-          ? GestureDetector(
-        key: const ValueKey('sendButton'),
-        onTap: _isSendButtonEnabled ? _sendMessage : null,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 100),
-          width: screenWidth * 0.09,
-          height: screenWidth * 0.09,
-          decoration: BoxDecoration(
-            color: _isSendButtonEnabled
-                ? (isDarkTheme ? Colors.white : Colors.black)
-                : (isDarkTheme
-                ? Colors.white.withOpacity(0.5)
-                : Colors.black.withOpacity(0.5)),
-            borderRadius: BorderRadius.circular(
-                _isSendButtonEnabled ? 20 : 17),
-          ),
+        child: AnimatedOpacity(
+          duration: currentDuration,
+          opacity: (isSendingState || isEnabled) ? 1.0 : 0.5,
+          curve: Curves.easeInOut,
           child: Icon(
             Icons.arrow_upward,
-            color: isDarkTheme ? Colors.black : Colors.white,
-            size: screenWidth * 0.06,
+            color: iconColor,
+            size: 24,
           ),
         ),
-      )
-          : const SizedBox.shrink(),
+      ),
+    );
+
+    Widget stopButton = GestureDetector(
+      key: const ValueKey('stopButton'),
+      onTap: _stopResponse,
+      child: AnimatedContainer(
+        duration: currentDuration,
+        curve: Curves.easeOut,
+        width: 34,
+        height: 34,
+        decoration: BoxDecoration(
+          color: AppColors.opposedPrimaryColor,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Center(
+          child: SvgPicture.asset(
+            'assets/stop.svg',
+            width: 22,
+            height: 22,
+            color: AppColors.primaryColor,
+          ),
+        ),
+      ),
+    );
+
+    Widget currentChild = isSendingState ? stopButton : sendButton;
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 200),
+      transitionBuilder: (child, animation) {
+        return ScaleTransition(scale: animation, child: child);
+      },
+      child: currentChild,
     );
   }
 
@@ -2569,179 +2742,185 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
     return textPainter.computeLineMetrics().length;
   }
 
-  Widget _buildInputField(AppLocalizations localizations, bool isDarkTheme) {
-    // Henüz model seçilmediyse hiçbir şey göstermiyoruz.
+  Widget _buildInputField(AppLocalizations localizations) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+
     if (!isModelSelected) {
       return const SizedBox.shrink();
     }
 
-    final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
-
-    return Padding(
-      // Genel padding ayarları
-      padding: EdgeInsets.fromLTRB(
-        screenWidth * 0.02,
-        0.0,
-        screenWidth * 0.02,
-        screenHeight * 0.005, // Alt boşluk azaltıldı.
-      ),
-      child: Container(
-        decoration: BoxDecoration(
-          color: isDarkTheme ? const Color(0xFF161616) : Colors.grey[300],
-          borderRadius: BorderRadius.circular(25),
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: const BorderRadius.only(
+          topLeft: Radius.circular(16),
+          topRight: Radius.circular(16),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Fotoğraf paneli (AnimatedSize + AnimatedSwitcher ile geçişli)
-            AnimatedSize(
+        border: Border(
+          top: BorderSide(
+            color: AppColors.border,
+            width: 1.0,
+          ),
+        ),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AnimatedSize(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            child: AnimatedSwitcher(
               duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
-                transitionBuilder: (Widget child, Animation<double> animation) {
-                  return FadeTransition(opacity: animation, child: child);
-                },
-                child: _selectedPhoto != null
-                    ? Padding(
-                  key: const ValueKey('photoPanel'),
-                  padding: EdgeInsets.all(screenWidth * 0.03),
-                  child: Stack(
-                    children: [
-                      Align(
-                        alignment: Alignment.centerLeft,
-                        child: ClipRRect(
-                          borderRadius: BorderRadius.circular(8.0),
-                          child: Image.file(
-                            _selectedPhoto!,
-                            width: screenWidth * 0.25,
-                            height: screenWidth * 0.25,
-                            fit: BoxFit.cover,
+              transitionBuilder: (Widget child, Animation<double> animation) {
+                return FadeTransition(opacity: animation, child: child);
+              },
+              child: _selectedPhoto != null
+                  ? Padding(
+                key: const ValueKey('photoPanel'),
+                padding: EdgeInsets.all(screenWidth * 0.03),
+                child: Stack(
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8.0),
+                        child: Image.file(
+                          _selectedPhoto!,
+                          width: screenWidth * 0.25,
+                          height: screenWidth * 0.25,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 0,
+                      right: 0,
+                      child: GestureDetector(
+                        onTap: _removeSelectedPhoto,
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            color: Colors.black87,
+                            shape: BoxShape.circle,
+                          ),
+                          padding: EdgeInsets.all(screenWidth * 0.01),
+                          child: Icon(
+                            Icons.close,
+                            size: screenWidth * 0.045,
+                            color: Colors.white,
                           ),
                         ),
                       ),
-                      Positioned(
-                        top: 0,
-                        right: 0,
-                        child: GestureDetector(
-                          onTap: _removeSelectedPhoto,
-                          child: Container(
-                            decoration: const BoxDecoration(
-                              color: Colors.black87,
-                              shape: BoxShape.circle,
-                            ),
-                            padding: EdgeInsets.all(screenWidth * 0.01),
-                            child: Icon(
-                              Icons.close,
-                              size: screenWidth * 0.045,
-                              color: Colors.white,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                )
-                    : const SizedBox.shrink(),
-              ),
+                    ),
+                  ],
+                ),
+              )
+                  : const SizedBox.shrink(),
             ),
-            // Metin girişi ve aksiyon butonlarının bulunduğu alan.
-            Padding(
-              padding: EdgeInsets.symmetric(
-                horizontal: screenWidth * 0.03,
-                vertical: screenHeight * 0.001,
-              ),
-              child: Stack(
-                children: [
-                  Row(
-                    children: [
-                      if (canHandleImage) ...[
-                        GestureDetector(
+          ),
+          Padding(
+            padding: EdgeInsets.zero,
+            child: Stack(
+              children: [
+                Row(
+                  children: [
+                    if (canHandleImage) ...[
+                      Padding(
+                        padding: EdgeInsets.only(left: screenWidth * 0.01),
+                        child: GestureDetector(
                           onTap: _selectedPhoto == null && !_isPhotoLoading
                               ? _pickPhoto
                               : null,
                           child: Opacity(
                             opacity:
                             _selectedPhoto == null && !_isPhotoLoading ? 1.0 : 0.5,
-                            child: Icon(
-                              Icons.add,
-                              color: isDarkTheme ? Colors.white : Colors.black,
-                              size: screenWidth * 0.06,
+                            child: Container(
+                              padding: EdgeInsets.all(screenWidth * 0.02),
+                              child: Icon(
+                                Icons.add,
+                                color: AppColors.opposedPrimaryColor,
+                                size: 24,
+                              ),
                             ),
                           ),
-                        ),
-                        SizedBox(width: screenWidth * 0.02),
-                      ],
-                      // Metin girişi
-                      Expanded(
-                        child: TextField(
-                          cursorColor: isDarkTheme ? Colors.white : Colors.black,
-                          controller: _controller,
-                          maxLength: 4000,
-                          minLines: 1,
-                          maxLines: 6,
-                          keyboardType: TextInputType.multiline,
-                          textInputAction: TextInputAction.newline,
-                          decoration: InputDecoration(
-                            hintText: localizations.messageHint,
-                            hintStyle: TextStyle(
-                              color: isDarkTheme ? Colors.grey[500] : Colors.grey[600],
-                              fontSize: screenWidth * 0.04,
-                            ),
-                            border: InputBorder.none,
-                            counterText: '',
-                            contentPadding: EdgeInsets.zero,
-                          ),
-                          style: TextStyle(
-                            color: isDarkTheme ? Colors.white : Colors.black,
-                            fontSize: screenWidth * 0.04,
-                          ),
-                          onChanged: _onTextChanged,
-                          onSubmitted: (text) {
-                            if (_isSendButtonEnabled) _sendMessage();
-                          },
                         ),
                       ),
-                      SizedBox(width: screenWidth * 0.02),
-                      _buildActionButton(isDarkTheme),
                     ],
-                  ),
-                  Positioned(
-                    top: screenHeight * 0.01,
-                    right: screenWidth * 0.03,
-                    child: IgnorePointer(
-                      ignoring: _getInputLineCount(
+                    Expanded(
+                      child: TextField(
+                        cursorColor: AppColors.opposedPrimaryColor,
+                        controller: _controller,
+                        maxLength: 4000,
+                        minLines: 1,
+                        maxLines: 6,
+                        keyboardType: TextInputType.multiline,
+                        textInputAction: TextInputAction.newline,
+                        decoration: InputDecoration(
+                          hintText: localizations.messageHint,
+                          hintStyle: TextStyle(
+                            color: Colors.grey[600],
+                            fontSize: screenWidth * 0.04,
+                          ),
+                          border: InputBorder.none,
+                          counterText: '',
+                          contentPadding: EdgeInsets.only(
+                            left: canHandleImage ? 0 : screenWidth * 0.02,
+                            right: 0,
+                            top: 0,
+                            bottom: 0,
+                          ),
+                        ),
+                        style: TextStyle(
+                          color: AppColors.opposedPrimaryColor,
+                          fontSize: screenWidth * 0.04,
+                        ),
+                        onChanged: _onTextChanged,
+                        onSubmitted: (text) {
+                          if (_isSendButtonEnabled) _sendMessage();
+                        },
+                      ),
+                    ),
+                    Padding(
+                      padding: EdgeInsets.only(right: screenWidth * 0.02),
+                      child: _buildActionButton(),
+                    ),
+                  ],
+                ),
+                Positioned(
+                  top: screenHeight * 0.01,
+                  right: screenWidth * 0.03,
+                  child: IgnorePointer(
+                    ignoring: _getInputLineCount(
+                      _controller.text,
+                      screenWidth - (screenWidth * 0.04),
+                    ) <= 2,
+                    child: AnimatedOpacity(
+                      opacity: _getInputLineCount(
                         _controller.text,
                         screenWidth - (screenWidth * 0.04),
-                      ) <=
-                          2,
-                      child: AnimatedOpacity(
-                        opacity: _getInputLineCount(
-                          _controller.text,
-                          screenWidth - (screenWidth * 0.04),
-                        ) >
-                            2
-                            ? 1.0
-                            : 0.0,
-                        duration: const Duration(milliseconds: 100),
-                        child: GestureDetector(
-                          onTap: _expandInputField,
+                      ) > 2
+                          ? 1.0
+                          : 0.0,
+                      duration: const Duration(milliseconds: 100),
+                      child: GestureDetector(
+                        onTap: _expandInputField,
+                        child: Transform.rotate(
+                          angle: 1.5708, // 90 derece sağa döndür (yaklaşık π/2)
                           child: SvgPicture.asset(
-                            'assets/expand.svg',
+                            'assets/arrov.svg',
                             width: screenWidth * 0.04,
                             height: screenWidth * 0.036,
-                            color: isDarkTheme ? Colors.white : Colors.black,
+                            color: AppColors.opposedPrimaryColor,
                           ),
                         ),
                       ),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -2754,7 +2933,6 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
         pageBuilder: (context, animation, secondaryAnimation) {
           return ExpandedInputScreen(
             initialText: _controller.text,
-            isDarkTheme: Provider.of<ThemeProvider>(context, listen: false).isDarkTheme,
             controller: _controller,
             onShrink: (updatedText) {
               setState(() {
@@ -2782,8 +2960,12 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
 
   @override
   void dispose() {
+    _downloadedModelsManager?.removeListener(_downloadedModelsListener);
+    removeExtensionOverlay();
     WidgetsBinding.instance.removeObserver(this);
+    _creditsSubscription?.cancel();
     _controller.dispose();
+    _startCacheClearTimer();
     responseTimer?.cancel();
     _scrollController.removeListener(_scrollListener);
     _scrollController.dispose();
@@ -2791,6 +2973,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
     _searchAnimationController.dispose();
     llamaChannel.setMethodCallHandler(null);
     _internetSubscription.cancel();
+    _textFieldFocusNode.unfocus();
     _textFieldFocusNode.dispose();
     _showScrollDownButton = false;
     _isProcessingChunks = false;
@@ -2812,7 +2995,6 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
   @override
   Widget build(BuildContext context) {
     final localizations = AppLocalizations.of(context)!;
-    final isDarkTheme = Provider.of<ThemeProvider>(context).isDarkTheme;
     final screenHeight = MediaQuery.of(context).size.height;
 
     if (_shouldHideImmediately) {
@@ -2822,9 +3004,8 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
     return WillPopScope(
       onWillPop: _onWillPop,
       child: Scaffold(
-        // BU SATIRI EKLEYİN:
         extendBody: true,
-        appBar: _buildAppBar(context, localizations, isDarkTheme),
+        appBar: _buildAppBarWrapper(context, localizations),
         body: Stack(
           children: [
             GestureDetector(
@@ -2833,7 +3014,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
                 FocusScope.of(context).unfocus();
               },
               child: Container(
-                color: isDarkTheme ? const Color(0xFF090909) : Colors.white,
+                color: AppColors.background,
                 child: Column(
                   children: [
                     Expanded(
@@ -2843,11 +3024,11 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
                           return FadeTransition(opacity: animation, child: child);
                         },
                         child: isModelSelected
-                            ? _buildChatScreen(localizations, isDarkTheme)
-                            : _buildModelSelectionScreen(localizations, isDarkTheme),
+                            ? _buildChatScreen(localizations)
+                            : _buildModelSelectionScreen(localizations),
                       ),
                     ),
-                    _buildInputField(localizations, isDarkTheme),
+                    _buildInputField(localizations),
                   ],
                 ),
               ),
@@ -2872,7 +3053,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
                       padding: const EdgeInsets.symmetric(
                           vertical: 12.0, horizontal: 20.0),
                       decoration: BoxDecoration(
-                        color: isDarkTheme ? Colors.red[700]! : Colors.red,
+                        color: AppColors.warning,
                         borderRadius: BorderRadius.circular(8.0),
                         boxShadow: const [
                           BoxShadow(
@@ -2920,7 +3101,8 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
               ignoring: !_showScrollDownButton,
               child: Padding(
                 padding: EdgeInsets.only(
-                  bottom: _inputFieldHeight + MediaQuery.of(context).size.height * 0.06,
+                  bottom: _inputFieldHeight +
+                      MediaQuery.of(context).size.height * 0.06,
                 ),
                 child: SizedBox(
                   width: 40,
@@ -2930,7 +3112,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
                       borderRadius: BorderRadius.circular(22),
                     ),
                     elevation: 2.0,
-                    backgroundColor: isDarkTheme ? const Color(0xFF212121) : Colors.black,
+                    backgroundColor: AppColors.background,
                     onPressed: () => _scrollToBottom(forceScroll: true),
                     child: SvgPicture.asset(
                       'assets/arrov.svg',
@@ -2949,7 +3131,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
     );
   }
 
-  Widget _buildModelSelectionScreen(AppLocalizations localizations, bool isDarkTheme) {
+  Widget _buildModelSelectionScreen(AppLocalizations localizations) {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
@@ -2964,7 +3146,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
             opacity: _modelsLoaded ? 1.0 : 0.0,
             duration: const Duration(milliseconds: 200),
             child: _modelsLoaded
-                ? _buildModelGrid(localizations, isDarkTheme)
+                ? _buildModelGrid(localizations)
                 : const SizedBox.shrink(),
           ),
           AnimatedOpacity(
@@ -2972,7 +3154,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
             duration: const Duration(milliseconds: 250),
             child: IgnorePointer(
               ignoring: _modelsLoaded,
-              child: _buildSkeletonModelGrid(isDarkTheme),
+              child: _buildSkeletonModelGrid(),
             ),
           ),
         ],
@@ -2980,130 +3162,140 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
     );
   }
 
-  Widget _buildModelGrid(AppLocalizations localizations, bool isDarkTheme) {
+  Widget _buildModelGrid(AppLocalizations localizations) {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
     final notificationService = Provider.of<NotificationService>(context, listen: false);
 
-    return _allModels.isNotEmpty
-        ? Column(
+    if (_allModels.isEmpty) {
+      return Center(
+        child: Text(
+          localizations.noModelsDownloaded,
+          style: TextStyle(
+            color: Colors.white.withOpacity(0.5),
+            fontSize: screenWidth * 0.04,
+          ),
+        ),
+      );
+    }
+
+    return Column(
       children: [
         Padding(
           padding: EdgeInsets.all(screenWidth * 0.02),
-          child: _buildSearchBar(localizations, isDarkTheme),
+          child: _buildSearchBar(localizations),
         ),
         Expanded(
-          child: GridView.builder(
-            padding: EdgeInsets.all(screenWidth * 0.02),
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              crossAxisSpacing: screenWidth * 0.02,
-              mainAxisSpacing: screenWidth * 0.02,
-              childAspectRatio: 0.75,
-            ),
-            itemCount: _filteredModels.length,
-            physics: const AlwaysScrollableScrollPhysics(),
-            itemBuilder: (context, index) {
-              final model = _filteredModels[index];
-              bool isServerSide = isServerSideModel(model.id);
-              // Kullanacağımız internet durumu doğrudan hasInternetConnection üzerinden kontrol ediliyor:
-              bool shouldFade = isServerSide && (!hasInternetConnection || _conversationLimitReached);
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 150),
+            transitionBuilder: (Widget child, Animation<double> animation) {
+              return FadeTransition(opacity: animation, child: child);
+            },
+            child: GridView.builder(
+              key: ValueKey<List<ModelInfo>>(_filteredModels),
+              padding: EdgeInsets.all(screenWidth * 0.02),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 3,
+                crossAxisSpacing: screenWidth * 0.02,
+                mainAxisSpacing: screenWidth * 0.02,
+                childAspectRatio: 0.75,
+              ),
+              physics: const AlwaysScrollableScrollPhysics(),
+              itemCount: _filteredModels.length,
+              itemBuilder: (context, index) {
+                final model = _filteredModels[index];
+                bool isServerSide = isServerSideModel(model.id);
+                bool shouldFade = isServerSide &&
+                    (!hasInternetConnection || _conversationLimitReached);
 
-              return GestureDetector(
-                onTap: () {
-                  if (isServerSide) {
-                    if (!hasInternetConnection) {
-                      notificationService.showNotification(
-                        message: localizations.internetRequired,
-                        isSuccess: false,
-                        fontSize: 0.032,
-                      );
-                      return;
+                return GestureDetector(
+                  onTap: () {
+                    if (isServerSide) {
+                      if (!hasInternetConnection) {
+                        notificationService.showNotification(
+                          message: localizations.internetRequired,
+                          isSuccess: false,
+                          fontSize: 0.032,
+                        );
+                        return;
+                      }
+                      if (_conversationLimitReached) {
+                        notificationService.showNotification(
+                          message: localizations.youReachedConversationLimit,
+                          isSuccess: false,
+                          fontSize: 0.032,
+                        );
+                        return;
+                      }
                     }
-                    if (_conversationLimitReached) {
-                      notificationService.showNotification(
-                        message: localizations.youReachedConversationLimit,
-                        isSuccess: false,
-                        fontSize: 0.032,
-                      );
-                      return;
-                    }
-                  }
-                  _selectModel(model);
-                  _scrollToBottom(forceScroll: true);
-                },
-                child: Opacity(
-                  opacity: shouldFade ? 0.5 : 1.0,
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: isDarkTheme ? const Color(0xFF1B1B1B) : Colors.grey[200],
-                      borderRadius: BorderRadius.circular(12),
-                      boxShadow: const [
-                        BoxShadow(
-                          color: Colors.black26,
-                          blurRadius: 4,
-                          offset: Offset(2, 2),
+                    _selectModel(model);
+                    _scrollToBottom(forceScroll: true);
+                  },
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 200),
+                    opacity: shouldFade ? 0.5 : 1.0,
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: AppColors.quaternaryColor,
+                        borderRadius: BorderRadius.circular(12),
+                        boxShadow: const [
+                          BoxShadow(
+                            color: Colors.black26,
+                            blurRadius: 4,
+                            offset: Offset(2, 2),
+                          ),
+                        ],
+                        border: Border.all(
+                          color: AppColors.opposedPrimaryColor.withOpacity(0.3),
                         ),
-                      ],
-                      border: Border.all(
-                        color: isDarkTheme ? Colors.grey[700]! : Colors.grey[300]!,
                       ),
-                    ),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Padding(
-                          padding: EdgeInsets.all(screenWidth * 0.02),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8.0),
-                            child: Image.asset(
-                              model.imagePath,
-                              height: screenHeight * 0.1,
-                              fit: BoxFit.contain,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Padding(
+                            padding: EdgeInsets.all(screenWidth * 0.02),
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(8.0),
+                              child: Image.asset(
+                                model.imagePath,
+                                height: screenHeight * 0.1,
+                                fit: BoxFit.contain,
+                              ),
                             ),
                           ),
-                        ),
-                        SizedBox(height: screenHeight * 0.01),
-                        Text(
-                          model.title,
-                          style: TextStyle(
-                            color: isDarkTheme ? Colors.white : Colors.black,
-                            fontSize: screenWidth * 0.035,
-                            fontWeight: FontWeight.bold,
+                          SizedBox(height: screenHeight * 0.01),
+                          Text(
+                            model.title,
+                            style: TextStyle(
+                              color: AppColors.opposedPrimaryColor,
+                              fontSize: screenWidth * 0.035,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
                           ),
-                          textAlign: TextAlign.center,
-                        ),
-                        SizedBox(height: screenHeight * 0.005),
-                        Text(
-                          model.producer,
-                          style: TextStyle(
-                            color: isDarkTheme ? Colors.grey[400] : Colors.grey[600],
-                            fontSize: screenWidth * 0.03,
+                          SizedBox(height: screenHeight * 0.005),
+                          Text(
+                            model.producer,
+                            style: TextStyle(
+                              color: AppColors.opposedPrimaryColor.withOpacity(0.6),
+                              fontSize: screenWidth * 0.03,
+                            ),
+                            textAlign: TextAlign.center,
                           ),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         ),
       ],
-    )
-        : Center(
-      child: Text(
-        localizations.noModelsDownloaded,
-        style: TextStyle(
-          color: isDarkTheme ? Colors.white70 : Colors.black54,
-          fontSize: screenWidth * 0.04,
-        ),
-      ),
     );
   }
 
-  Widget _buildSkeletonModelGrid(bool isDarkTheme) {
+  Widget _buildSkeletonModelGrid() {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
@@ -3112,13 +3304,12 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
         Padding(
           padding: EdgeInsets.all(screenWidth * 0.02),
           child: Shimmer.fromColors(
-            baseColor: isDarkTheme ? Colors.grey[800]! : Colors.grey[300]!,
-            highlightColor:
-            isDarkTheme ? Colors.grey[700]! : Colors.grey[100]!,
+            baseColor: AppColors.shimmerBase,
+            highlightColor: AppColors.shimmerHighlight,
             child: Container(
               height: screenHeight * 0.06,
               decoration: BoxDecoration(
-                color: isDarkTheme ? Colors.grey[800] : Colors.grey[300],
+                color: AppColors.shimmerBase,
                 borderRadius: BorderRadius.circular(12.0),
               ),
             ),
@@ -3136,13 +3327,11 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
             itemCount: 12,
             itemBuilder: (context, index) {
               return Shimmer.fromColors(
-                baseColor:
-                isDarkTheme ? Colors.grey[800]! : Colors.grey[300]!,
-                highlightColor:
-                isDarkTheme ? Colors.grey[700]! : Colors.grey[100]!,
+                baseColor: AppColors.shimmerBase,
+                highlightColor: AppColors.shimmerHighlight,
                 child: Container(
                   decoration: BoxDecoration(
-                    color: isDarkTheme ? Colors.grey[800] : Colors.grey[300],
+                    color: AppColors.shimmerBase,
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
@@ -3167,8 +3356,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
 
   void _showInternetRequiredNotification() {
     final localizations = AppLocalizations.of(context)!;
-    final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
-    final isDarkTheme = themeProvider.isDarkTheme;
+
     final notificationService =
     Provider.of<NotificationService>(context, listen: false);
 
@@ -3180,23 +3368,31 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
     );
   }
 
-  AppBar _buildAppBar(BuildContext context, AppLocalizations localizations, bool isDarkTheme) {
+  AppBar _buildAppBar(BuildContext context, AppLocalizations localizations) {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
     return AppBar(
       toolbarHeight: screenHeight * 0.08,
-      backgroundColor: isDarkTheme ? const Color(0xFF090909) : Colors.white,
+      backgroundColor: AppColors.background,
       centerTitle: true,
       scrolledUnderElevation: 0,
       leading: isModelSelected
           ? IconButton(
+        key: _exitButtonKey,
         icon: Icon(
           Icons.arrow_back,
-          color: isDarkTheme ? Colors.white : Colors.black,
+          color: AppColors.opposedPrimaryColor,
           size: screenWidth * 0.06,
         ),
         onPressed: () async {
+          if (_extensionOverlayEntry != null) {
+            setState(() {
+              _extensionPanelIsClosing = true;
+            });
+            await Future.delayed(const Duration(milliseconds: 300));
+            removeExtensionOverlay();
+          }
           if (isWaitingForResponse) {
             await _stopResponse();
           }
@@ -3223,33 +3419,73 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
           }
         },
       )
-          : _buildCreditsHexagonRow(isDarkTheme),
-      title: isModelSelected
-          ? FittedBox(
-        fit: BoxFit.scaleDown,
-        child: Text(
-          modelTitle ?? '',
-          style: GoogleFonts.poppins(
-            fontSize: screenWidth * 0.055,
-            color: isDarkTheme ? Colors.white : Colors.black,
-            fontWeight: FontWeight.w500,
+          : _buildCreditsHexagonRow(),
+      title: GestureDetector(
+        onTap: () {
+          if (isModelSelected) {
+            if (_extensionOverlayEntry == null) {
+              _insertExtensionPanel();
+            } else {
+              setState(() {
+                _extensionPanelIsClosing = true;
+              });
+            }
+          }
+        },
+        child: isModelSelected
+            ? LayoutBuilder(
+          builder: (context, constraints) {
+            final maxWidth = constraints.maxWidth;
+            final textStyle = GoogleFonts.heebo(
+              fontSize: screenWidth * 0.055,
+              color: AppColors.opposedPrimaryColor,
+              fontWeight: FontWeight.w600,
+            );
+            final textSpan = TextSpan(
+              text: modelTitle ?? '',
+              style: textStyle,
+            );
+            final textPainter = TextPainter(
+              text: textSpan,
+              textDirection: TextDirection.ltr,
+            )..layout();
+            final textWidth = textPainter.width;
+            final extensionLeftPosition =
+                (maxWidth / 2) - (textWidth / 2) + textWidth;
+
+            return Stack(
+              children: [
+                Center(child: Text(modelTitle ?? '', style: textStyle)),
+                Positioned(
+                  top: 0,
+                  bottom: 0,
+                  left: extensionLeftPosition,
+                  child: Align(
+                    alignment: Alignment.center,
+                    child: _buildModelExtensionSelector(),
+                  ),
+                ),
+              ],
+            );
+          },
+        )
+            : Text(
+          localizations.appTitle,
+          style: GoogleFonts.mavenPro(
+            color: AppColors.opposedPrimaryColor,
+            fontSize: screenWidth * 0.08,
           ),
-        ),
-      )
-          : Text(
-        localizations.appTitle,
-        style: GoogleFonts.play(
-          color: isDarkTheme ? Colors.white : Colors.black,
-          fontSize: screenWidth * 0.08,
         ),
       ),
       actions: <Widget>[
         GestureDetector(
-          onTap: () => _navigateToScreen(
-            context,
-            const AccountScreen(),
-            direction: const Offset(1.0, 0.0),
-          ),
+          key: _accountButtonKey,
+          onTap: () async {
+            _navigateToScreen(
+              context,
+              const AccountScreen(),
+              direction: const Offset(1.0, 0.0));
+          },
           behavior: HitTestBehavior.translucent,
           child: Container(
             width: 50,
@@ -3257,19 +3493,25 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
             alignment: Alignment.center,
             margin: const EdgeInsets.only(left: 5, bottom: 5),
             child: Transform.translate(
-              offset: Offset(-screenWidth * 0.02, screenHeight * 0.0015),
+              offset: Offset(-screenWidth * 0.02, screenHeight * 0.005),
+              child: Transform.translate(
+            offset: Offset(-screenWidth * 0.0, screenHeight * 0.003),
+            child: Container(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: AppColors.border,
+                  width: 1.0,
+                ),
+              ),
               child: CircleAvatar(
                 radius: screenWidth * 0.05,
-                backgroundColor: isDarkTheme ? Colors.grey[800] : Colors.grey[300],
+                backgroundColor: AppColors.quaternaryColor,
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 250),
-                  transitionBuilder: (Widget child, Animation<double> animation) {
-                    return FadeTransition(
-                      opacity: animation,
-                      child: child,
-                    );
+                  transitionBuilder: (child, animation) {
+                    return FadeTransition(opacity: animation, child: child);
                   },
-                  // Key’i metin değerine göre ayarlıyoruz:
                   child: Text(
                     _userData != null &&
                         _userData!['username'] != null &&
@@ -3285,27 +3527,29 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
                     ),
                     style: TextStyle(
                       fontSize: screenWidth * 0.045,
-                      color: isDarkTheme ? Colors.white : Colors.black,
+                      color: AppColors.opposedPrimaryColor,
                     ),
                   ),
                 ),
               ),
             ),
           ),
+            ),
+          ),
         ),
       ],
+      flexibleSpace: Container(),
     );
   }
 
-  Widget _buildCreditsHexagonRow(bool isDarkTheme) {
+// 7. _buildCreditsHexagonRow()
+// Artık krediler için kullanılan arka plan ve kenarlık renkleri, AppColors.creditsBackground ve AppColors.border üzerinden ayarlanıyor.
+  Widget _buildCreditsHexagonRow() {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
-    // Toplam kredi = satın alınan + bonus
-    int totalCredits = _credits + _bonusCredits;
-
     return Padding(
-      padding: EdgeInsets.only(top: screenHeight * 0.005),
+      padding: EdgeInsets.only(top: screenHeight * 0.001),
       child: SizedBox(
         width: screenWidth * 0.37,
         height: screenHeight * 0.1,
@@ -3313,7 +3557,6 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
           clipBehavior: Clip.none,
           alignment: Alignment.topLeft,
           children: [
-            // Arka plan kredi barı
             Positioned(
               top: screenHeight * 0.0129,
               left: screenWidth * 0.05,
@@ -3325,10 +3568,10 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
                   vertical: screenHeight * 0.005,
                 ),
                 decoration: BoxDecoration(
-                  color: isDarkTheme ? const Color(0xFF181818) : Colors.grey[300],
+                  color: AppColors.quaternaryColor,
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
-                    color: isDarkTheme ? Colors.white : Colors.black,
+                    color: AppColors.border,
                     width: 0.5,
                   ),
                 ),
@@ -3338,27 +3581,25 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
                     Container(
                       padding: EdgeInsets.all(screenWidth * 0.01),
                       decoration: BoxDecoration(
-                        color: isDarkTheme ? const Color(0xFF181818) : Colors.grey[300],
+                        color: AppColors.quaternaryColor,
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: SvgPicture.asset(
                         'assets/credit.svg',
                         width: screenWidth * 0.05,
                         height: screenWidth * 0.05,
-                        color: isDarkTheme ? Colors.white : Colors.black,
+                        color: AppColors.opposedPrimaryColor,
                       ),
                     ),
                   ],
                 ),
               ),
             ),
-            // Hexagon buton (tasarımınızda olduğu gibi)
             Positioned(
               top: screenHeight * 0.0129,
               left: screenWidth * 0.02,
-              child: _buildHexagonButton(isDarkTheme),
+              child: _buildHexagonButton(),
             ),
-            // Kredi miktarını gösteren AnimatedSwitcher
             Positioned(
               top: screenHeight * 0.0129,
               left: screenWidth * 0.115,
@@ -3366,25 +3607,12 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
                 width: screenWidth * 0.12,
                 height: screenHeight * 0.045,
                 child: Center(
-                  child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 250),
-                    transitionBuilder: (Widget child, Animation<double> animation) {
-                      return FadeTransition(
-                        opacity: animation,
-                        child: child,
-                      );
-                    },
-                    // totalCredits değeri değiştiğinde key de değişsin diye ValueKey kullanıyoruz
-                    child: FittedBox(
-                      key: ValueKey<int>(totalCredits),
-                      child: Text(
-                        '$totalCredits',
-                        style: TextStyle(
-                          fontSize: screenWidth * 0.04,
-                          fontWeight: FontWeight.bold,
-                          color: isDarkTheme ? Colors.white : Colors.black,
-                        ),
-                      ),
+                  child: Text(
+                    '${_credits + _bonusCredits}',
+                    style: TextStyle(
+                      fontSize: screenWidth * 0.04,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.opposedPrimaryColor,
                     ),
                   ),
                 ),
@@ -3396,7 +3624,9 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
     );
   }
 
-  Widget _buildHexagonButton(bool isDarkTheme) {
+// 8. _buildHexagonButton()
+// Butonun dolgu ve kenarlık rengi artık AppColors.hexagon ve AppColors.border üzerinden alınıyor.
+  Widget _buildHexagonButton() {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
@@ -3409,19 +3639,19 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
           color: Colors.transparent,
           child: InkWell(
             onTap: () {
-              _showComingSoonMessage();
+              _navigateToScreen(context, PremiumScreen(), direction: const Offset(0.0, 1.0));
             },
             child: CustomPaint(
               painter: HexagonBorderPainter(
-                fillColor: isDarkTheme ? Colors.grey[900]! : Colors.grey[300]!,
-                borderColor: isDarkTheme ? Colors.white : Colors.black,
+                fillColor: AppColors.quaternaryColor,
+                borderColor: AppColors.border,
                 strokeWidth: 1.5,
               ),
               child: Padding(
                 padding: EdgeInsets.all(screenWidth * 0.02),
                 child: SvgPicture.asset(
                   'assets/sparkle.svg',
-                  color: isDarkTheme ? Colors.white : Colors.black,
+                  color: AppColors.opposedPrimaryColor,
                   width: screenWidth * 0.05,
                   height: screenWidth * 0.05,
                 ),
@@ -3430,18 +3660,6 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
           ),
         ),
       ),
-    );
-  }
-
-  void _showComingSoonMessage() {
-    final notificationService =
-    Provider.of<NotificationService>(context, listen: false);
-
-    notificationService.showNotification(
-      message: AppLocalizations.of(context)!.comingSoon,
-      bottomOffset: 0.1,
-      fontSize: 0.038,
-      duration: Duration(seconds: 2),
     );
   }
 
@@ -3465,52 +3683,52 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
     );
   }
 
-  Widget _buildChatScreen(AppLocalizations localizations, bool isDarkTheme) {
+  Widget _buildChatScreen(AppLocalizations localizations) {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
-    return Column(
-      children: [
-        Expanded(
-          child: messages.isEmpty
-              ? Center(
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (modelImagePath != null)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(15.0),
-                      child: Image.asset(
-                        modelImagePath!,
-                        height: screenWidth * 0.25,
-                        width: screenWidth * 0.25,
-                        fit: BoxFit.contain,
-                      ),
-                    ),
-                  SizedBox(height: screenHeight * 0.02),
-                  if (modelTitle != null)
-                    Text(
-                      modelTitle!,
-                      style: GoogleFonts.poppins(
-                        fontSize: screenWidth * 0.05,
-                        color: isDarkTheme ? Colors.white : Colors.black,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  SizedBox(height: screenHeight * 0.02),
-                ],
-              ),
-            ),
-          )
-              : _buildMessagesList(isDarkTheme),
+    if (messages.isEmpty) {
+      return Center(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              if (modelImagePath != null)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(15.0),
+                  child: Image.asset(
+                    modelImagePath!,
+                    height: screenWidth * 0.25,
+                    width: screenWidth * 0.25,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              SizedBox(height: screenHeight * 0.02),
+              if (modelTitle != null)
+                Text(
+                  modelTitle!,
+                  style: GoogleFonts.heebo(
+                    fontSize: screenWidth * 0.05,
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              SizedBox(height: screenHeight * 0.02),
+            ],
+          ),
         ),
-      ],
-    );
+      );
+    } else {
+      return Column(
+        children: [
+          Expanded(child: _buildMessagesList()),
+        ],
+      );
+    }
   }
 
-  Widget _buildMessagesList(bool isDarkTheme) {
+  Widget _buildMessagesList() {
     final screenHeight = MediaQuery.of(context).size.height;
 
     return ListView.separated(
@@ -3521,24 +3739,23 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
         return SizedBox(height: screenHeight * 0.005);
       },
       itemBuilder: (context, index) {
-        return _buildMessageTile(messages[index], index, isDarkTheme);
+        return _buildMessageTile(messages[index], index);
       },
     );
   }
 
-  Widget _buildMessageTile(Message message, int index, bool isDarkTheme) {
+  Widget _buildMessageTile(Message message, int index) {
     return message.isUserMessage
-        ? _buildUserMessageTile(message, index, isDarkTheme)
-        : _buildAIMessageTile(message, index, isDarkTheme);
+        ? _buildUserMessageTile(message, index)
+        : _buildAIMessageTile(message, index);
   }
 
-  Widget _buildUserMessageTile(Message message, int index, bool isDarkTheme) {
+  Widget _buildUserMessageTile(Message message, int index) {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
     final key = ValueKey<Message>(message);
     List<Widget> children = [];
 
-    // Fotoğraf varsa -> Shimmer + Fade animasyonu
     if (message.photoPath != null) {
       children.add(
         Padding(
@@ -3559,10 +3776,9 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
                 File(message.photoPath!),
                 frameBuilder: (BuildContext ctx, Widget child, int? frame, bool wasSyncLoaded) {
                   if (frame == null) {
-                    // Henüz decode edilmedi -> Shimmer
                     return Shimmer.fromColors(
-                      baseColor: isDarkTheme ? Colors.grey[800]! : Colors.grey[300]!,
-                      highlightColor: isDarkTheme ? Colors.grey[700]! : Colors.grey[100]!,
+                      baseColor: AppColors.shimmerBase,
+                      highlightColor: AppColors.shimmerHighlight,
                       child: Container(
                         width: screenWidth * 0.4,
                         height: screenWidth * 0.4,
@@ -3570,7 +3786,6 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
                       ),
                     );
                   } else {
-                    // Decode geldi -> Fade animasyonu
                     return AnimatedOpacity(
                       opacity: 1.0,
                       duration: const Duration(milliseconds: 300),
@@ -3589,13 +3804,11 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
       );
     }
 
-    // Metin varsa
     if (message.text.trim().isNotEmpty) {
       children.add(
         UserMessageTile(
           key: key,
           text: message.text,
-          isDarkTheme: isDarkTheme,
           shouldFadeOut: message.shouldFadeOut,
           onFadeOutComplete: () {
             setState(() {
@@ -3613,7 +3826,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
     );
   }
 
-  Widget _buildAIMessageTile(Message message, int index, bool isDarkTheme) {
+  Widget _buildAIMessageTile(Message message, int index) {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
     final key = ValueKey<Message>(message);
@@ -3649,7 +3862,6 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
           key: key,
           text: message.text,
           imagePath: modelImagePath ?? '',
-          isDarkTheme: isDarkTheme,
           shouldFadeOut: message.shouldFadeOut,
           modelId: modelId ?? '',
           isReported: message.isReported,
@@ -3660,6 +3872,7 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
             await _updateStoredMessage(message, index);
           },
           onRegenerate: () => _onRegenerate(index),
+          onStop: _stopResponse,
           onFadeOutComplete: () async {
             setState(() {
               messages.removeAt(index);
@@ -3702,24 +3915,23 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
     await prefs.setString(conversationID!, jsonEncode(storedMessages));
   }
 
-  Widget _buildSearchBar(AppLocalizations localizations, bool isDarkTheme) {
+  Widget _buildSearchBar(AppLocalizations localizations) {
     final screenWidth = MediaQuery.of(context).size.width;
-
     return TextField(
-      cursorColor: isDarkTheme ? Colors.white : Colors.black,
+      cursorColor: Colors.white,
       decoration: InputDecoration(
         hintText: localizations.searchHint,
         hintStyle: TextStyle(
-          color: isDarkTheme ? Colors.grey[400] : Colors.grey[600],
+          color: AppColors.opposedPrimaryColor,
           fontSize: screenWidth * 0.04,
         ),
         prefixIcon: Icon(
           Icons.search,
-          color: isDarkTheme ? Colors.white : Colors.black,
+          color: AppColors.opposedPrimaryColor,
           size: screenWidth * 0.06,
         ),
         filled: true,
-        fillColor: isDarkTheme ? Colors.grey[900] : Colors.grey[200],
+        fillColor: AppColors.quaternaryColor,
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
@@ -3731,13 +3943,13 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide(
-            color: isDarkTheme ? Colors.white : Colors.black,
+            color: AppColors.border,
           ),
         ),
         contentPadding: EdgeInsets.zero,
       ),
       style: TextStyle(
-        color: isDarkTheme ? Colors.white : Colors.black,
+        color: Colors.white,
         fontSize: screenWidth * 0.04,
       ),
       onChanged: _onSearchChanged,
@@ -3784,13 +3996,11 @@ class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin, W
 
 class FadeInText extends StatefulWidget {
   final String text;
-  final bool isDarkTheme;
   final Duration fadeInDuration;
 
   const FadeInText({
     Key? key,
     required this.text,
-    required this.isDarkTheme,
     this.fadeInDuration = const Duration(milliseconds: 300),
   }) : super(key: key);
 
@@ -3827,7 +4037,7 @@ class _FadeInTextState extends State<FadeInText>
       child: Text(
         widget.text,
         style: TextStyle(
-          color: widget.isDarkTheme ? Colors.white : Colors.black,
+          color: AppColors.opposedPrimaryColor,
           fontSize: 16,
         ),
       ),

@@ -10,11 +10,11 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'chat.dart';
+import 'chat/chat.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'models.dart';
 import 'download.dart';
-import 'conversations.dart';
+import 'inbox.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
@@ -26,13 +26,8 @@ import 'notifications.dart';
 import 'theme.dart';
 import 'dart:async';
 
-// Bu key'i saklıyoruz (silmedik).
+// Global key yalnızca MainScreen için tanımlanıyor.
 final GlobalKey<MainScreenState> mainScreenKey = GlobalKey<MainScreenState>();
-
-// **ÖNEMLİ GÜNCELLEME**: Tekil (singleton) MainScreen örneğini tanımlıyoruz.
-// Tüm projede sadece bu "mainScreen" kullanılacak.
-final MainScreen mainScreen = MainScreen(key: mainScreenKey);
-
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 class TabProvider with ChangeNotifier {
@@ -126,35 +121,41 @@ int _getSubscriptionLevel(String productId) {
   return 0;
 }
 
-void main() async {
+Future<void> main() async {
   await dotenv.load(fileName: ".env");
   WidgetsFlutterBinding.ensureInitialized();
   await Firebase.initializeApp();
   await requestNotificationPermission();
   await FlutterDownloader.initialize();
-  final fileDownloadHelper = FileDownloadHelper();
-  final menuState = mainScreenKey.currentState?.menuScreenKey.currentState;
-  if (menuState != null) {
-    await menuState.applyPendingConversationsDecrement();
-  }
+  await LocalNotificationService.instance.initNotifications();
   await _checkAndUpdateSubscription();
 
+  // SharedPreferences'ten tema ayarını string olarak alıyoruz
   final prefs = await SharedPreferences.getInstance();
-  bool? isDarkTheme = prefs.getBool('isDarkTheme');
-  if (isDarkTheme == null) {
+  String? savedTheme = prefs.getString('selectedTheme');
+  String initialTheme;
+  if (savedTheme == null) {
+    // İlk defa açılıyorsa, cihazın temasını kontrol ediyoruz
     Brightness brightness = WidgetsBinding.instance.window.platformBrightness;
-    isDarkTheme = brightness == Brightness.dark;
+    initialTheme = brightness == Brightness.dark ? 'dark' : 'light';
+    await prefs.setString('selectedTheme', initialTheme);
+  } else {
+    initialTheme = savedTheme;
   }
 
   runApp(
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => FileDownloadHelper()),
+        // ThemeProvider'ı string olarak belirlenen initialTheme ile başlatıyoruz
         ChangeNotifierProvider<ThemeProvider>(
-          create: (_) => ThemeProvider(isDarkTheme!),
+          create: (_) => ThemeProvider(initialTheme),
         ),
         ChangeNotifierProvider<LocaleProvider>(
           create: (_) => LocaleProvider(),
+        ),
+        ChangeNotifierProvider<DownloadedModelsManager>(
+          create: (_) => DownloadedModelsManager(),
         ),
         ChangeNotifierProvider(create: (_) => TabProvider()),
       ],
@@ -168,55 +169,41 @@ class ChatApp extends StatelessWidget {
 
   final GlobalKey<NavigatorState> navigatorKey;
 
+  ThemeData _buildTheme(String currentTheme) {
+    final bool isDark = currentTheme == 'dark';
+    final baseTheme = isDark ? ThemeData.dark() : ThemeData.light();
+
+    return baseTheme.copyWith(
+      primaryColor: AppColors.background,
+      scaffoldBackgroundColor: AppColors.background,
+      colorScheme: baseTheme.colorScheme.copyWith(
+        primary: AppColors.opposedPrimaryColor,
+        onPrimary: AppColors.primaryColor,
+        secondary: AppColors.border,
+        onSecondary: AppColors.quaternaryColor,
+        surface: AppColors.background,
+        onSurface: AppColors.border,
+        error: AppColors.warning,
+      ),
+      textSelectionTheme: TextSelectionThemeData(
+        cursorColor: AppColors.opposedPrimaryColor,
+        selectionColor: AppColors.opposedQuaternaryColor,
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        focusColor: AppColors.opposedPrimaryColor,
+        hintStyle: TextStyle(color: AppColors.tertiaryColor),
+        labelStyle:TextStyle(color: AppColors.tertiaryColor),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer<ThemeProvider>(
       builder: (context, themeProvider, child) {
-        // Tema değişikliklerini ThemeProvider yönetiyor, bu yüzden burada ekstra bir şey yapmanıza gerek yok
         return MaterialApp(
           navigatorKey: navigatorKey,
-          theme: ThemeData(
-            brightness: Brightness.light,
-            primaryColor: Colors.black,
-            colorScheme: const ColorScheme.light(
-              primary: Colors.black,
-              onPrimary: Colors.white,
-              secondary: Colors.grey,
-              onSecondary: Colors.white,
-              surface: Colors.white,
-              onSurface: Colors.black,
-              error: Colors.red,
-            ),
-            textSelectionTheme: TextSelectionThemeData(
-              cursorColor: Colors.black,
-              selectionColor: Colors.grey[200],
-            ),
-            inputDecorationTheme: const InputDecorationTheme(
-              focusColor: Colors.black,
-            ),
-          ),
-          darkTheme: ThemeData(
-            brightness: Brightness.dark,
-            primaryColor: Colors.white,
-            colorScheme: ColorScheme.dark(
-              primary: Colors.white,
-              onPrimary: Colors.black,
-              secondary: Colors.white,
-              onSecondary: Colors.black,
-              surface: Colors.black,
-              onSurface: Colors.white,
-              error: Colors.red[400]!,
-            ),
-            textSelectionTheme: TextSelectionThemeData(
-              cursorColor: Colors.white,
-              selectionColor: Colors.grey[200],
-            ),
-            inputDecorationTheme: const InputDecorationTheme(
-              focusColor: Colors.white,
-            ),
-          ),
-          themeMode:
-          themeProvider.isDarkTheme ? ThemeMode.dark : ThemeMode.light,
+          theme: _buildTheme(themeProvider.currentTheme),
           locale: Provider.of<LocaleProvider>(context).locale,
           supportedLocales: const [
             Locale('en'),
@@ -229,16 +216,8 @@ class ChatApp extends StatelessWidget {
             GlobalCupertinoLocalizations.delegate,
           ],
           localeResolutionCallback: (locale, supportedLocales) {
-            final localeProvider =
-            Provider.of<LocaleProvider>(context, listen: false);
+            final localeProvider = Provider.of<LocaleProvider>(context, listen: false);
             return localeProvider.locale;
-
-            if (locale != null &&
-                supportedLocales.any((supportedLocale) =>
-                supportedLocale.languageCode == locale.languageCode)) {
-              return locale;
-            }
-            return const Locale('en');
           },
           builder: (context, child) {
             return Provider<NotificationService>(
@@ -253,53 +232,38 @@ class ChatApp extends StatelessWidget {
   }
 }
 
-
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 
-  /// Firebase oturum kalıcılığı sayesinde eğer kullanıcı oturum açmışsa,
-  /// SharedPreferences kontrolüne gerek kalmadan true döndür.
   Future<bool> _checkRememberMe() async {
     User? user = FirebaseAuth.instance.currentUser;
     if (user != null) {
-      // Firebase, oturumu cihazda sakladığı için direkt true dönebiliriz.
       return true;
     }
-    // Eğer Firebase'de oturum bulunmuyorsa, eskiden kullanılan SharedPreferences kontrolünü yapalım.
     final SharedPreferences prefs = await SharedPreferences.getInstance();
     bool rememberMe = prefs.getBool('remember_me') ?? false;
     return rememberMe;
   }
 
   Future<Widget> _decideScreen() async {
-    // İnternet bağlantısını kontrol et
     bool isConnected = await InternetConnection().hasInternetAccess;
-
-    // Eğer internet yoksa, sadece "remember me" kontrolü yapalım
     if (!isConnected) {
       bool hasRemember = await _checkRememberMe();
       if (hasRemember) {
-        // İnternet olmadığı için doğrulama sorgusu yapmadan direkt ana ekrana (chatscreen) yönlendir
-        return mainScreen;
+        return MainScreen(key: mainScreenKey);
       } else {
         return const LoginScreen();
       }
     }
 
-    // İnternet varsa, mevcut akışa devam edelim.
     bool hasRememberAndUser = await _checkRememberMe();
     User? user = FirebaseAuth.instance.currentUser;
     if (!hasRememberAndUser || user == null) {
       return const LoginScreen();
     }
 
-    // Firestore'da kullanıcı belgesinin var olup olmadığını kontrol et
     try {
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(user.uid)
-          .get();
-
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
       if (!userDoc.exists) {
         return const LoginScreen();
       }
@@ -308,36 +272,27 @@ class AuthWrapper extends StatelessWidget {
       return const LoginScreen();
     }
 
-    // Kullanıcı bilgilerini yenile
     try {
       await user.reload();
     } catch (e) {
       print("Kullanıcı bilgileri reload edilemedi: $e");
-      return mainScreen;
+      return MainScreen(key: mainScreenKey);
     }
 
-    // Email doğrulama kontrolü
     if (user.emailVerified) {
-      return mainScreen;
+      return MainScreen(key: mainScreenKey);
     } else {
-      // Doğrulanmamış hesaplar için Firestore’daki kullanıcı belgesinden bazı bilgileri alıp,
-      // EmailVerificationScreen’e yönlendiriyoruz.
       try {
-        final userDoc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .get();
-
+        final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
         if (!userDoc.exists) {
           return const LoginScreen();
         }
-
         final data = userDoc.data()!;
         return EmailVerificationScreen(
           email: data['email'] ?? '',
           username: data['username'] ?? '',
           userId: user.uid,
-          password: '', // Gerekirse doldurulabilir.
+          password: '',
         );
       } catch (e) {
         print("Firestore sorgusunda hata oluştu: $e");
@@ -353,21 +308,16 @@ class AuthWrapper extends StatelessWidget {
     return FutureBuilder<Widget>(
       future: _decideScreen(),
       builder: (context, snapshot) {
-        // Future sonucu bekleniyorsa loading ekranı, tamamlandıysa ilgili ekran.
         Widget child;
         if (snapshot.connectionState == ConnectionState.waiting) {
           child = Container(
             key: const ValueKey('loading'),
             width: double.infinity,
             height: double.infinity,
-            color: themeProvider.isDarkTheme
-                ? const Color(0xFF090909)
-                : const Color(0xFFFFFFFF),
+            color: AppColors.background,
           );
         } else {
-          child = snapshot.hasData
-              ? snapshot.data!
-              : const LoginScreen(key: ValueKey('login'));
+          child = snapshot.hasData ? snapshot.data! : const LoginScreen(key: ValueKey('login'));
         }
 
         return AnimatedSwitcher(
@@ -392,8 +342,8 @@ class MainScreen extends StatefulWidget {
   MainScreenState createState() => MainScreenState();
 }
 
-class MainScreenState extends State<MainScreen>
-    with SingleTickerProviderStateMixin {
+class MainScreenState extends State<MainScreen> with SingleTickerProviderStateMixin {
+  // GlobalKey'leri yalnızca MainScreen içinde kullanıyoruz.
   final GlobalKey<ChatScreenState> chatScreenKey = GlobalKey<ChatScreenState>();
   final GlobalKey<MenuScreenState> menuScreenKey = GlobalKey<MenuScreenState>();
 
@@ -407,7 +357,7 @@ class MainScreenState extends State<MainScreen>
     _screens = [
       ChatScreen(key: chatScreenKey),
       const ModelsScreen(key: ValueKey('Models')),
-      MenuScreen(key: menuScreenKey),
+      MenuScreen(key: const ValueKey('MenuScreen')),
     ];
   }
 
@@ -420,23 +370,19 @@ class MainScreenState extends State<MainScreen>
     setState(() {
       hideBottomAppBar = value;
     });
-
     final themeProvider = Provider.of<ThemeProvider>(context, listen: false);
-    themeProvider.updateSystemUIOverlayStyle(hideBottomAppBar: hideBottomAppBar);
+    themeProvider.updateSystemUIOverlayStyle();
   }
 
   void openConversation(ConversationManager manager) {
     final tabProvider = Provider.of<TabProvider>(context, listen: false);
     tabProvider.setSelectedIndex(0);
-
     WidgetsBinding.instance.addPostFrameCallback((_) {
       chatScreenKey.currentState?.loadConversation(manager);
       chatScreenKey.currentState?.setState(() {
         chatScreenKey.currentState?.isModelSelected = true;
         chatScreenKey.currentState?.isModelLoaded = true;
       });
-
-      // BottomAppBar'ın görünürlüğünü güncelle
       updateBottomAppBarVisibility(true);
     });
   }
@@ -445,20 +391,17 @@ class MainScreenState extends State<MainScreen>
     final tabProvider = Provider.of<TabProvider>(context, listen: false);
     tabProvider.setSelectedIndex(0);
     chatScreenKey.currentState?.resetConversation();
-
-    // BottomAppBar'ın görünürlüğünü güncelle
     updateBottomAppBarVisibility(false);
   }
 
+// Updated build method in MainScreenState
   @override
   Widget build(BuildContext context) {
     final tabProvider = Provider.of<TabProvider>(context);
     final themeProvider = Provider.of<ThemeProvider>(context);
-    final isDarkTheme = themeProvider.isDarkTheme;
     final appLocalizations = AppLocalizations.of(context)!;
     final screenHeight = MediaQuery.of(context).size.height;
 
-    // BottomAppBar'ın görünürlüğünü güncelle
     bool shouldHideBottomAppBar = false;
     if (tabProvider.selectedIndex == 0 && chatScreenKey.currentState != null) {
       shouldHideBottomAppBar = chatScreenKey.currentState!.isModelSelected;
@@ -491,14 +434,14 @@ class MainScreenState extends State<MainScreen>
             ? null
             : Container(
           decoration: BoxDecoration(
-            color: isDarkTheme ? const Color(0xFF090909) : Colors.white,
+            color: AppColors.background,
             borderRadius: const BorderRadius.only(
               topLeft: Radius.circular(16.0),
               topRight: Radius.circular(16.0),
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
+                color: AppColors.shadow,
                 blurRadius: 8,
                 offset: const Offset(0, -2),
               ),
@@ -508,11 +451,10 @@ class MainScreenState extends State<MainScreen>
             color: Colors.transparent,
             elevation: 0,
             child: SizedBox(
-              height: screenHeight * 0.09, // Dinamik yükseklik
+              height: screenHeight * 0.09,
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
-                  // Inbox
                   Expanded(
                     child: BottomNavigationButton(
                       iconPath: 'assets/inbox.svg',
@@ -522,13 +464,11 @@ class MainScreenState extends State<MainScreen>
                           ? null
                           : () {
                         onItemTapped(2);
-                        ScaffoldMessenger.of(context)
-                            .hideCurrentSnackBar();
+                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
                       },
-                      baseSize: screenHeight * 0.028, // Dinamik boyut
+                      baseSize: screenHeight * 0.028,
                     ),
                   ),
-                  // Chat
                   Expanded(
                     child: BottomNavigationButton(
                       iconPath: 'assets/main.svg',
@@ -538,13 +478,11 @@ class MainScreenState extends State<MainScreen>
                           ? null
                           : () {
                         onItemTapped(0);
-                        ScaffoldMessenger.of(context)
-                            .hideCurrentSnackBar();
+                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
                       },
-                      baseSize: screenHeight * 0.028, // Dinamik boyut
+                      baseSize: screenHeight * 0.028,
                     ),
                   ),
-                  // Library
                   Expanded(
                     child: BottomNavigationButton(
                       iconPath: 'assets/models.svg',
@@ -554,10 +492,9 @@ class MainScreenState extends State<MainScreen>
                           ? null
                           : () {
                         onItemTapped(1);
-                        ScaffoldMessenger.of(context)
-                            .hideCurrentSnackBar();
+                        ScaffoldMessenger.of(context).hideCurrentSnackBar();
                       },
-                      baseSize: screenHeight * 0.022, // Dinamik boyut
+                      baseSize: screenHeight * 0.022,
                     ),
                   ),
                 ],
@@ -586,28 +523,21 @@ class BottomNavigationButton extends StatelessWidget {
     this.baseSize = 20.0,
   }) : super(key: key);
 
+// Updated build method in BottomNavigationButton
   @override
   Widget build(BuildContext context) {
-    // Tema bilgisi
-    final isDarkTheme = Provider.of<ThemeProvider>(context).isDarkTheme;
-
-    // Seçili olup olmadığına göre ikon rengi ayarlama
-    Color iconColor = isSelected
-        ? (isDarkTheme ? Colors.white : Colors.black)
-        : (isDarkTheme ? Colors.grey : Colors.grey[600]!);
+    Color iconColor = isSelected ? AppColors.opposedPrimaryColor : AppColors.unselectedIcon;
 
     return GestureDetector(
       onTap: onTap,
-      behavior: HitTestBehavior.opaque, // Tüm alanı tıklanabilir yapar
+      behavior: HitTestBehavior.opaque,
       child: Container(
         alignment: Alignment.center,
-        // "Column" ile ikon ve yazıyı alt alta yerleştiriyoruz
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // İkon kısmı (AnimatedScale ile)
             SizedBox(
-              width: baseSize * 1.2, // İkonu ve animasyonu rahat sığdırmak için
+              width: baseSize * 1.2,
               height: baseSize * 1.2,
               child: Center(
                 child: AnimatedScale(
@@ -624,8 +554,6 @@ class BottomNavigationButton extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 2.0),
-
-            // Yazı kısmı (hem AnimatedDefaultTextStyle hem AnimatedScale)
             AnimatedDefaultTextStyle(
               duration: const Duration(milliseconds: 200),
               curve: Curves.easeInOut,

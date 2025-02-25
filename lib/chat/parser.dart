@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
+import '../theme.dart';
 import 'codeblocks.dart'; // CodeBlockWidget'ınızı içeren dosya
 
 /// SafeMathTex widget'ı, LaTeX ifadelerini işlerken oluşan hataları yakalar
@@ -38,7 +39,7 @@ class SafeMathTex extends StatelessWidget {
 /// parseText fonksiyonu, verilen metni analiz eder ve InlineSpan listesi döndürür.
 /// Bu fonksiyon, LaTeX, kod blokları ve çeşitli markdown stillerini işler.
 /// Hatalı LaTeX ifadeleri, SafeMathTex widget'ı tarafından ham metin olarak gösterilir.
-List<InlineSpan> parseText(String text, bool isDarkTheme) {
+List<InlineSpan> parseText(String text) {
   try {
     final latexPattern =
         r'(\\\[.+?\\\]|\\\(.+?\\\)|\$\$.+?\$\$|\$.+?\$|\\begin\{.*?\}[\s\S]*?\\end\{.*?\})';
@@ -64,7 +65,7 @@ List<InlineSpan> parseText(String text, bool isDarkTheme) {
           spans.add(TextSpan(
             text: text.substring(currentIndex, match.start),
             style: TextStyle(
-              color: isDarkTheme ? Colors.white : Colors.black,
+              color: AppColors.primaryColor,
               fontSize: 16,
             ),
           ));
@@ -96,7 +97,7 @@ List<InlineSpan> parseText(String text, bool isDarkTheme) {
             child: SafeMathTex(
               latex: latex,
               textStyle: TextStyle(
-                color: isDarkTheme ? Colors.white : Colors.black,
+                color: AppColors.primaryColor,
                 fontSize: 16, // İhtiyacınıza göre font boyutunu ayarlayın
               ),
             ),
@@ -122,7 +123,7 @@ List<InlineSpan> parseText(String text, bool isDarkTheme) {
             span = TextSpan(
               text: matchText,
               style: TextStyle(
-                color: isDarkTheme ? Colors.white : Colors.black,
+                color: AppColors.primaryColor,
                 fontSize: 16,
               ),
             );
@@ -139,7 +140,7 @@ List<InlineSpan> parseText(String text, bool isDarkTheme) {
             span = TextSpan(
               text: content + '\n',
               style: TextStyle(
-                color: isDarkTheme ? Colors.white : Colors.black,
+                color: AppColors.primaryColor,
                 fontSize: 22 - level.toDouble(),
                 fontWeight: FontWeight.bold,
               ),
@@ -148,7 +149,7 @@ List<InlineSpan> parseText(String text, bool isDarkTheme) {
             span = TextSpan(
               text: matchText,
               style: TextStyle(
-                color: isDarkTheme ? Colors.white : Colors.black,
+                color: AppColors.primaryColor,
                 fontSize: 16,
               ),
             );
@@ -166,7 +167,7 @@ List<InlineSpan> parseText(String text, bool isDarkTheme) {
             span = TextSpan(
               text: content,
               style: TextStyle(
-                color: isDarkTheme ? Colors.white : Colors.black,
+                color: AppColors.primaryColor,
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
                 fontStyle: FontStyle.italic,
@@ -176,7 +177,7 @@ List<InlineSpan> parseText(String text, bool isDarkTheme) {
             span = TextSpan(
               text: matchText,
               style: TextStyle(
-                color: isDarkTheme ? Colors.white : Colors.black,
+                color: AppColors.primaryColor,
                 fontSize: 16,
               ),
             );
@@ -194,7 +195,7 @@ List<InlineSpan> parseText(String text, bool isDarkTheme) {
             span = TextSpan(
               text: content,
               style: TextStyle(
-                color: isDarkTheme ? Colors.white : Colors.black,
+                color: AppColors.primaryColor,
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
               ),
@@ -203,7 +204,7 @@ List<InlineSpan> parseText(String text, bool isDarkTheme) {
             span = TextSpan(
               text: matchText,
               style: TextStyle(
-                color: isDarkTheme ? Colors.white : Colors.black,
+                color: AppColors.primaryColor,
                 fontSize: 16,
               ),
             );
@@ -221,7 +222,7 @@ List<InlineSpan> parseText(String text, bool isDarkTheme) {
             span = TextSpan(
               text: content,
               style: TextStyle(
-                color: isDarkTheme ? Colors.white : Colors.black,
+                color: AppColors.primaryColor,
                 fontSize: 16,
                 fontStyle: FontStyle.italic,
               ),
@@ -230,7 +231,7 @@ List<InlineSpan> parseText(String text, bool isDarkTheme) {
             span = TextSpan(
               text: matchText,
               style: TextStyle(
-                color: isDarkTheme ? Colors.white : Colors.black,
+                color: AppColors.primaryColor,
                 fontSize: 16,
               ),
             );
@@ -247,7 +248,7 @@ List<InlineSpan> parseText(String text, bool isDarkTheme) {
             span = TextSpan(
               text: content,
               style: TextStyle(
-                color: isDarkTheme ? Colors.white : Colors.black,
+                color: AppColors.primaryColor,
                 fontSize: 16,
                 decoration: TextDecoration.lineThrough,
               ),
@@ -256,7 +257,7 @@ List<InlineSpan> parseText(String text, bool isDarkTheme) {
             span = TextSpan(
               text: matchText,
               style: TextStyle(
-                color: isDarkTheme ? Colors.white : Colors.black,
+                color: AppColors.primaryColor,
                 fontSize: 16,
               ),
             );
@@ -273,19 +274,17 @@ List<InlineSpan> parseText(String text, bool isDarkTheme) {
             span = TextSpan(
               text: content,
               style: TextStyle(
-                color: isDarkTheme ? Colors.white : Colors.black,
+                color: AppColors.primaryColor,
                 fontSize: 16,
                 fontFamily: 'monospace',
-                backgroundColor: isDarkTheme
-                    ? Colors.grey[800]
-                    : Colors.grey[200],
+                backgroundColor: AppColors.tertiaryColor,
               ),
             );
           } else {
             span = TextSpan(
               text: matchText,
               style: TextStyle(
-                color: isDarkTheme ? Colors.white : Colors.black,
+                color: AppColors.primaryColor,
                 fontSize: 16,
               ),
             );
@@ -316,7 +315,7 @@ List<InlineSpan> parseText(String text, bool isDarkTheme) {
           span = TextSpan(
             text: matchText,
             style: TextStyle(
-              color: isDarkTheme ? Colors.white : Colors.black,
+              color: AppColors.primaryColor,
               fontSize: 16,
             ),
           );
@@ -330,7 +329,7 @@ List<InlineSpan> parseText(String text, bool isDarkTheme) {
         spans.add(TextSpan(
           text: match.group(0),
           style: TextStyle(
-            color: isDarkTheme ? Colors.white : Colors.black,
+            color: AppColors.primaryColor,
             fontSize: 16,
           ),
         ));
@@ -343,7 +342,7 @@ List<InlineSpan> parseText(String text, bool isDarkTheme) {
       spans.add(TextSpan(
         text: text.substring(currentIndex),
         style: TextStyle(
-          color: isDarkTheme ? Colors.white : Colors.black,
+          color: AppColors.primaryColor,
           fontSize: 16,
         ),
       ));
@@ -357,10 +356,87 @@ List<InlineSpan> parseText(String text, bool isDarkTheme) {
       TextSpan(
         text: text,
         style: TextStyle(
-          color: isDarkTheme ? Colors.white : Colors.black,
+          color: AppColors.primaryColor,
           fontSize: 16,
         ),
       )
     ];
+  }
+}
+
+/// A stateful widget that measures the width of a rendered Math.tex widget
+/// and, if it overflows, scales it down just enough to fit.
+class _FittingLatexWidget extends StatefulWidget {
+  final String latex;
+  final bool isDarkTheme;
+
+  const _FittingLatexWidget({
+    Key? key,
+    required this.latex,
+    required this.isDarkTheme,
+  }) : super(key: key);
+
+  @override
+  State<_FittingLatexWidget> createState() => _FittingLatexWidgetState();
+}
+
+class _FittingLatexWidgetState extends State<_FittingLatexWidget> {
+  final GlobalKey _renderKey = GlobalKey();
+  double _scale = 1.0;
+
+  @override
+  void didUpdateWidget(covariant _FittingLatexWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // If the LaTeX changes, re-measure and possibly rescale
+    if (oldWidget.latex != widget.latex) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _measureWidth());
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Measure after the first layout
+    WidgetsBinding.instance.addPostFrameCallback((_) => _measureWidth());
+  }
+
+  void _measureWidth() {
+    final renderBox = _renderKey.currentContext?.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+
+    final childWidth = renderBox.size.width;
+    final availableWidth = renderBox.constraints.maxWidth;
+
+    if (childWidth > availableWidth && availableWidth > 0) {
+      setState(() {
+        _scale = availableWidth / childWidth;
+      });
+    } else {
+      setState(() {
+        _scale = 1.0;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Transform.scale(
+          scale: _scale,
+          alignment: Alignment.topLeft,
+          child: Container(
+            key: _renderKey,
+            child: Math.tex(
+              widget.latex,
+              textStyle: TextStyle(
+                color: AppColors.primaryColor,
+                fontSize: 16,
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 }

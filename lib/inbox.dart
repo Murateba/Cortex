@@ -1,4 +1,4 @@
-// conversations.dart
+// inbox.dart
 
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -98,7 +98,7 @@ class MenuScreen extends StatefulWidget {
   MenuScreenState createState() => MenuScreenState();
 }
 
-class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+class MenuScreenState extends State<MenuScreen> with TickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   /// Manager'larımız:
   final Map<String, ConversationManager> _conversationManagers = {};
   final ScrollController _listScrollController = ScrollController();
@@ -114,6 +114,13 @@ class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMi
 
   // "All Chats" sekmesi için AnimatedList kullanacağız:
   final GlobalKey<AnimatedListState> _allChatsListKey = GlobalKey<AnimatedListState>();
+
+  final GlobalKey<AnimatedListState> _starredChatsListKey = GlobalKey<AnimatedListState>();
+  // Starred sohbetleri tutacak liste
+  List<String> _starredConversationIDs = [];
+
+  TabController? _tabController;
+  int _currentTabIndex = 0;
 
   late final AnimationController _fadeAnimationController;
   late Animation<double> _fadeAnimation;
@@ -133,6 +140,16 @@ class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMi
       parent: _fadeAnimationController,
       curve: Curves.easeInOut,
     );
+
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController!.addListener(() {
+      // Sekme geçişinde aktif index’i güncelleyelim
+      if (!_tabController!.indexIsChanging) {
+        setState(() {
+          _currentTabIndex = _tabController!.index;
+        });
+      }
+    });
 
     // Set up internet connectivity listener and assign to _internetSubscription
     _internetSubscription = InternetConnection().onStatusChange.listen((status) async {
@@ -208,7 +225,6 @@ class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMi
       for (int i = 0; i < conversations.length; i++) {
         String conversationEntry = conversations[i];
         List<String> parts = conversationEntry.split('|');
-        // Format: convID|convTitle|modelId|lastMessageDate|lastMessageText|lastMessagePhotoPath
         if (parts.length >= 5) {
           String convID = parts[0];
           String convTitle = parts[1];
@@ -220,17 +236,12 @@ class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMi
           DateTime lastMessageDate =
               DateTime.tryParse(lastMessageDateString) ?? DateTime.now();
 
-          // Model verisini al
           Map<String, dynamic> modelData = _getModelDataFromId(modelId);
-
           bool isServerSide = modelData['isServerSide'] == true;
           bool isModelAvailable = await _isModelAvailable(modelId);
           bool isStarred = prefs.getBool('is_starred_$convID') ?? false;
-
-          // YENİ: Modelin resim alıp alamayacağı
           bool canHandleImage = modelData['canHandleImage'] ?? false;
 
-          // Manager oluştur
           final manager = ConversationManager(
             conversationID: convID,
             conversationTitle: convTitle,
@@ -261,10 +272,17 @@ class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMi
       });
     }
 
-    // **Consistency Check**
+    // ---------- YENİ EKLENEN: Starred sohbetleri de güncelle -----------
+    _starredConversationIDs = _conversationIDsOrder
+        .where((id) => _conversationManagers[id]?.isStarred == true)
+        .toList();
+    // ---------------------------------------------------------------------
+
+    // Consistency check (değişiklik olmadan)
     for (String convID in _conversationIDsOrder) {
       if (!_conversationManagers.containsKey(convID)) {
-        debugPrint('Error: _conversationManagers missing entry for conversationID: $convID');
+        debugPrint(
+            'Error: _conversationManagers missing entry for conversationID: $convID');
       }
     }
 
@@ -421,9 +439,10 @@ class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMi
   Map<String, dynamic> _getModelDataFromId(String modelId) {
     List<Map<String, dynamic>> allModels = ModelData.models(context);
 
-    // Use a default map in orElse to ensure a non-null return value
+    String mainId = modelId.contains('-') ? modelId.split('-')[0] : modelId;
+
     Map<String, dynamic> model = allModels.firstWhere(
-          (model) => model['id'] == modelId,
+          (m) => m['id'] == mainId,
       orElse: () => {
         'title': 'Unknown Model',
         'image': '',
@@ -434,15 +453,12 @@ class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMi
       },
     );
 
-    // Check if the returned model is the default one
     if (model['title'] == 'Unknown Model') {
-      debugPrint('Error: No model found for modelId: $modelId');
+      debugPrint('Error: No model found for modelId: $modelId (using mainId: $mainId)');
     }
 
     return model;
   }
-
-
 
   /// Konuşma başlığını düzenle
   Future<void> _editConversation(String conversationID, String newTitle) async {
@@ -477,19 +493,130 @@ class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMi
     );
   }
 
+  Widget _buildAnimatedStarredRemovalItem(String conversationID, Animation<double> animation) {
+    final manager = _conversationManagers[conversationID];
+    if (manager == null) {
+      debugPrint('Warning: ConversationManager for ID $conversationID is null.');
+      return const SizedBox.shrink();
+    }
+    final curvedAnimation = CurvedAnimation(parent: animation, curve: Curves.easeInOut);
+    return AnimatedBuilder(
+      animation: curvedAnimation,
+      builder: (context, child) {
+        return SizeTransition(
+          sizeFactor: curvedAnimation,
+          child: FadeTransition(
+            opacity: curvedAnimation,
+            child: child,
+          ),
+        );
+      },
+      child: ConversationTile(
+        key: ValueKey(conversationID),
+        manager: manager,
+        hideWhenUnstarred: false,
+        onDelete: () => _deleteConversation(conversationID),
+        onEdit: (newTitle) => _editConversation(conversationID, newTitle),
+        onToggleStar: () => _toggleStarredStatus(conversationID),
+      ),
+    );
+  }
+
   Future<void> _toggleStarredStatus(String conversationID) async {
     final prefs = await SharedPreferences.getInstance();
     final manager = _conversationManagers[conversationID];
     if (manager == null) return;
 
     bool newVal = !manager.isStarred;
+
+    // Eğer yıldızlı liste görünümündeysek ve sohbetin yıldızı kaldırılıyorsa:
+    if (_currentTabIndex == 1 && !newVal) {
+      int starredIndex = _starredConversationIDs.indexOf(conversationID);
+      if (starredIndex != -1) {
+        // Eğer listedeki öğe sayısı 1 ise (yani son öğe) farklı davranalım:
+        bool isLastStarred = _starredConversationIDs.length == 1;
+        if (!isLastStarred) {
+          // Birden fazla öğe varsa: Önce listeden kaldır, sonra animasyon çalıştır.
+          setState(() {
+            _starredConversationIDs.removeAt(starredIndex);
+          });
+          _starredChatsListKey.currentState?.removeItem(
+            starredIndex,
+                (context, animation) =>
+                _buildAnimatedStarredRemovalItem(conversationID, animation),
+            duration: const Duration(milliseconds: 300),
+          );
+        } else {
+          // Eğer listede yalnızca bir öğe varsa:
+          // 1) AnimatedList üzerinden kaldırma animasyonunu başlatıyoruz.
+          _starredChatsListKey.currentState?.removeItem(
+            starredIndex,
+                (context, animation) =>
+                _buildAnimatedStarredRemovalItem(conversationID, animation),
+            duration: const Duration(milliseconds: 300),
+          );
+          // 2) Animasyonun tamamlanması için bekliyoruz, ardından veri kaynağından kaldırıyoruz.
+          await Future.delayed(const Duration(milliseconds: 300));
+          setState(() {
+            _starredConversationIDs.removeAt(starredIndex);
+          });
+        }
+      }
+    }
+
+    // Durum güncellemesi ve prefs’e yazma:
     manager.setStarred(newVal);
     await prefs.setBool('is_starred_$conversationID', newVal);
 
-    if (!newVal) {
-      await Future.delayed(const Duration(milliseconds: 200));
+    // Yıldızlı sohbetler listesini yeniden hesaplayalım:
+    setState(() {
+      _starredConversationIDs = _conversationIDsOrder
+          .where((id) => _conversationManagers[id]?.isStarred == true)
+          .toList();
+    });
+
+    // Eğer sohbet yeni yıldızlandıysa (insert animasyonu):
+    if (_currentTabIndex == 1 && newVal) {
+      int insertIndex = _starredConversationIDs.indexOf(conversationID);
+      if (insertIndex == -1) {
+        insertIndex = _starredConversationIDs.length;
+      }
+      _starredChatsListKey.currentState?.insertItem(
+        insertIndex,
+        duration: const Duration(milliseconds: 300),
+      );
     }
-    setState(() {});
+  }
+
+  Widget _buildAnimatedStarredListItem(
+      String conversationID, Animation<double> animation) {
+    final manager = _conversationManagers[conversationID];
+    if (manager == null) {
+      debugPrint('Warning: ConversationManager for ID $conversationID is null.');
+      return const SizedBox.shrink();
+    }
+    final curvedAnimation =
+    CurvedAnimation(parent: animation, curve: Curves.easeInOut);
+    return AnimatedBuilder(
+      animation: curvedAnimation,
+      builder: (context, child) {
+        return SizeTransition(
+          sizeFactor: curvedAnimation,
+          child: FadeTransition(
+            opacity: curvedAnimation,
+            child: child,
+          ),
+        );
+      },
+      child: ConversationTile(
+        key: ValueKey(conversationID),
+        manager: manager,
+        hideWhenUnstarred: false,
+        onDelete: () => _deleteConversation(conversationID),
+        onEdit: (newTitle) => _editConversation(conversationID, newTitle),
+        onToggleStar: () => _toggleStarredStatus(conversationID),
+      ),
+    );
   }
 
   Widget _buildAnimatedListItem(String conversationID, Animation<double> animation) {
@@ -510,161 +637,179 @@ class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMi
     );
   }
 
-  Widget _buildConversationTile(String conversationID, {bool hideWhenUnstarred = false}) {
-    final manager = _conversationManagers[conversationID];
-    if (manager == null) {
-      return const SizedBox.shrink();
-    }
-
-    return ConversationTile(
-      key: ValueKey(conversationID),
-      manager: manager,
-      hideWhenUnstarred: hideWhenUnstarred,
-      onDelete: () => _deleteConversation(conversationID),
-      onEdit: (newTitle) => _editConversation(conversationID, newTitle),
-      onToggleStar: () => _toggleStarredStatus(conversationID),
-    );
-  }
-
   Widget _buildConversationList({required bool showStarredOnly}) {
-    final isDarkTheme = Provider.of<ThemeProvider>(context).isDarkTheme;
     final localizations = AppLocalizations.of(context)!;
 
-    // Filtreleme: Yıldızlı sohbetler veya tüm sohbetler
-    List<String> filteredIDs = showStarredOnly
-        ? _conversationIDsOrder
-        .where((id) => _conversationManagers[id]?.isStarred == true)
-        .toList()
-        : List<String>.from(_conversationIDsOrder);
-
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 200),
-      transitionBuilder: (child, animation) {
-        return FadeTransition(
-          opacity: animation,
-          child: child,
-        );
-      },
-      // _isLoading durumuna göre farklı widget'lar döndürüyoruz:
-      child: _isLoading
-          ? _SkeletonChatList(key: const ValueKey('skeleton'))
-          : (filteredIDs.isEmpty
-          ? TweenAnimationBuilder<double>(
-        key: const ValueKey('empty'),
-        tween: Tween<double>(begin: 0, end: 1),
-        duration: const Duration(milliseconds: 300),
-        builder: (context, opacity, child) {
-          return Opacity(
-            opacity: opacity,
-            child: child,
-          );
-        },
-        child: Align(
-          alignment: Alignment.center,
-          child: Padding(
-            padding:
-            EdgeInsets.all(MediaQuery.of(context).size.width * 0.04),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  showStarredOnly
-                      ? localizations.noStarredChats
-                      : localizations.noChats,
-                  style: TextStyle(
-                    fontFamily: 'Roboto',
-                    color: isDarkTheme ? Colors.white : Colors.black,
-                    fontSize: MediaQuery.of(context).size.width * 0.08,
-                    fontWeight: FontWeight.bold,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                SizedBox(
-                    height: MediaQuery.of(context).size.height * 0.005),
-                Text(
-                  showStarredOnly
-                      ? localizations.noStarredChatsMessage
-                      : localizations.noConversationsMessage,
-                  style: TextStyle(
-                    color:
-                    isDarkTheme ? Colors.grey[400] : Colors.grey[700],
-                    fontSize: MediaQuery.of(context).size.width * 0.04,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                SizedBox(
-                    height: MediaQuery.of(context).size.height * 0.01),
-                ElevatedButton(
-                  onPressed: () {
-                    if (showStarredOnly) {
-                      DefaultTabController.of(context)?.animateTo(0);
-                    } else {
-                      mainScreenKey.currentState?.onItemTapped(0);
-                    }
-                    ScaffoldMessenger.of(context)
-                        .hideCurrentSnackBar();
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor:
-                    isDarkTheme ? Colors.white : Colors.black,
-                    padding: EdgeInsets.symmetric(
-                      horizontal:
-                      MediaQuery.of(context).size.width * 0.08,
-                      vertical:
-                      MediaQuery.of(context).size.height * 0.015,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(
-                          MediaQuery.of(context).size.width * 0.02),
-                    ),
-                  ),
-                  child: Text(
-                    showStarredOnly
-                        ? localizations.goToChats
-                        : localizations.startChat,
+    if (showStarredOnly) {
+      // Yıldızlı sohbetler için dış katmanı AnimatedSwitcher ile sarmıyoruz.
+      if (_isLoading) {
+        return _SkeletonChatList(key: const ValueKey('skeleton'));
+      } else if (_starredConversationIDs.isEmpty) {
+        return TweenAnimationBuilder<double>(
+          key: const ValueKey('empty'),
+          tween: Tween<double>(begin: 0, end: 1),
+          duration: const Duration(milliseconds: 300),
+          builder: (context, opacity, child) {
+            return Opacity(opacity: opacity, child: child);
+          },
+          child: Align(
+            alignment: Alignment.center,
+            child: Padding(
+              padding: EdgeInsets.all(MediaQuery.of(context).size.width * 0.04),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    localizations.noStarredChats,
                     style: TextStyle(
-                      color: isDarkTheme ? Colors.black : Colors.white,
-                      fontSize:
-                      MediaQuery.of(context).size.width * 0.04,
+                      fontFamily: 'Roboto',
+                      color: AppColors.opposedPrimaryColor,
+                      fontSize: MediaQuery.of(context).size.width * 0.08,
                       fontWeight: FontWeight.bold,
                     ),
+                    textAlign: TextAlign.center,
                   ),
-                ),
-              ],
+                  SizedBox(height: MediaQuery.of(context).size.height * 0.005),
+                  Text(
+                    localizations.noStarredChatsMessage,
+                    style: TextStyle(
+                      color: AppColors.tertiaryColor,
+                      fontSize: MediaQuery.of(context).size.width * 0.04,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: MediaQuery.of(context).size.height * 0.01),
+                  ElevatedButton(
+                    onPressed: () {
+                      DefaultTabController.of(context)?.animateTo(0);
+                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.opposedPrimaryColor,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: MediaQuery.of(context).size.width * 0.08,
+                        vertical: MediaQuery.of(context).size.height * 0.015,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(MediaQuery.of(context).size.width * 0.02),
+                      ),
+                    ),
+                    child: Text(
+                      localizations.goToChats,
+                      style: TextStyle(
+                        color: AppColors.primaryColor,
+                        fontSize: MediaQuery.of(context).size.width * 0.04,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-      )
-          : (showStarredOnly
-          ? ListView.builder(
-        key: const ValueKey('starredList'),
-        itemCount: filteredIDs.length,
-        itemBuilder: (context, index) {
-          final convID = filteredIDs[index];
-          return _buildConversationTile(convID, hideWhenUnstarred: true);
-        },
-      )
-          : AnimatedList(
-        key: _allChatsListKey, // GlobalKey kullanılıyor!
-        initialItemCount: filteredIDs.length,
-        itemBuilder: (context, index, animation) {
-          final convID = filteredIDs[index];
-          return _buildAnimatedListItem(convID, animation);
-        },
-      )
-      )
-      ),
-    );
+        );
+      } else {
+        return AnimatedList(
+          key: _starredChatsListKey,
+          initialItemCount: _starredConversationIDs.length,
+          itemBuilder: (context, index, animation) {
+            if (index >= _starredConversationIDs.length) return const SizedBox.shrink();
+            final convID = _starredConversationIDs[index];
+            return _buildAnimatedStarredListItem(convID, animation);
+          },
+        );
+      }
+    } else {
+      // Normal sohbetler listesini oluştururken AnimatedSwitcher kullanmaya devam ediyoruz.
+      return AnimatedSwitcher(
+        duration: const Duration(milliseconds: 200),
+        transitionBuilder: (child, animation) =>
+            FadeTransition(opacity: animation, child: child),
+        child: _isLoading
+            ? _SkeletonChatList(key: const ValueKey('skeleton'))
+            : (_conversationIDsOrder.isEmpty
+            ? TweenAnimationBuilder<double>(
+          key: const ValueKey('empty'),
+          tween: Tween<double>(begin: 0, end: 1),
+          duration: const Duration(milliseconds: 300),
+          builder: (context, opacity, child) {
+            return Opacity(opacity: opacity, child: child);
+          },
+          child: Align(
+            alignment: Alignment.center,
+            child: Padding(
+              padding: EdgeInsets.all(MediaQuery.of(context).size.width * 0.04),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    localizations.noChats,
+                    style: TextStyle(
+                      fontFamily: 'Roboto',
+                      color: AppColors.opposedPrimaryColor,
+                      fontSize: MediaQuery.of(context).size.width * 0.08,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: MediaQuery.of(context).size.height * 0.005),
+                  Text(
+                    localizations.noConversationsMessage,
+                    style: TextStyle(
+                      color: AppColors.tertiaryColor,
+                      fontSize: MediaQuery.of(context).size.width * 0.04,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: MediaQuery.of(context).size.height * 0.01),
+                  ElevatedButton(
+                    onPressed: () {
+                      mainScreenKey.currentState?.onItemTapped(0);
+                      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.opposedPrimaryColor,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: MediaQuery.of(context).size.width * 0.08,
+                        vertical: MediaQuery.of(context).size.height * 0.015,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(MediaQuery.of(context).size.width * 0.02),
+                      ),
+                    ),
+                    child: Text(
+                      localizations.startChat,
+                      style: TextStyle(
+                        color: AppColors.primaryColor,
+                        fontSize: MediaQuery.of(context).size.width * 0.04,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        )
+            : AnimatedList(
+          key: _allChatsListKey,
+          initialItemCount: _conversationIDsOrder.length,
+          itemBuilder: (context, index, animation) {
+            final convID = _conversationIDsOrder[index];
+            return _buildAnimatedListItem(convID, animation);
+          },
+        )),
+      );
+    }
   }
+
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
 
     final localizations = AppLocalizations.of(context)!;
-    final isDarkTheme = Provider.of<ThemeProvider>(context).isDarkTheme;
     final screenWidth = MediaQuery.of(context).size.width;
-    // We'll also use screenHeight if needed for the app bar sizing, etc.
 
     return FadeTransition(
       opacity: _fadeAnimation,
@@ -681,19 +826,19 @@ class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMi
                 localizations.conversationsTitle,
                 style: TextStyle(
                   fontFamily: 'Roboto',
-                  color: isDarkTheme ? Colors.white : Colors.black,
+                  color: AppColors.opposedPrimaryColor,
                   fontSize: screenWidth * 0.06,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              backgroundColor: isDarkTheme ? const Color(0xFF090909) : Colors.white,
+              backgroundColor: AppColors.background,
               elevation: 0,
               actions: [
                 IconButton(
                   icon: SvgPicture.asset(
                     'assets/chat.svg',
-                    color: isDarkTheme ? Colors.white : Colors.black,
-                    width: screenWidth * 0.055,  // e.g., ~22px if screenWidth=400
+                    color: AppColors.primaryColor,
+                    width: screenWidth * 0.055,
                     height: screenWidth * 0.055,
                   ),
                   onPressed: () {
@@ -713,17 +858,18 @@ class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMi
                     width: double.infinity,
                     alignment: Alignment.center,
                     child: TabBar(
+                      controller: _tabController, // Kendi oluşturduğunuz _tabController'ı kullanın.
                       isScrollable: false,
                       indicator: UnderlineTabIndicator(
                         borderSide: BorderSide(
                           width: screenWidth * 0.004,
-                          color: isDarkTheme ? Colors.white : Colors.black,
+                          color: AppColors.opposedPrimaryColor,
                         ),
                         insets: EdgeInsets.zero,
                       ),
                       indicatorSize: TabBarIndicatorSize.tab,
-                      labelColor: isDarkTheme ? Colors.white : Colors.black,
-                      unselectedLabelColor: isDarkTheme ? Colors.grey : Colors.grey,
+                      labelColor: AppColors.opposedPrimaryColor,
+                      unselectedLabelColor: Colors.grey,
                       labelStyle: TextStyle(fontSize: screenWidth * 0.04),
                       tabs: [
                         Tab(
@@ -748,8 +894,9 @@ class MenuScreenState extends State<MenuScreen> with SingleTickerProviderStateMi
                 ),
               ),
             ),
-            backgroundColor: isDarkTheme ? const Color(0xFF090909) : Colors.white,
+            backgroundColor: AppColors.background,
             body: TabBarView(
+              controller: _tabController, // Kendi _tabController'ınızı burada da geçin.
               children: [
                 _buildConversationList(showStarredOnly: false),
                 _buildConversationList(showStarredOnly: true),
@@ -812,13 +959,13 @@ class _ConversationTileState extends State<ConversationTile>
     _displayedTitle = widget.manager.conversationTitle;
     _fadeOutController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 500),
+      duration: const Duration(milliseconds: 250),
     )..addListener(() {
       setState(() {});
     });
     _fadeInController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 500),
+      duration: const Duration(milliseconds: 250),
     )..addListener(() {
       setState(() {});
     });
@@ -891,7 +1038,6 @@ class _ConversationTileState extends State<ConversationTile>
     final double lineHeight = 1.2;
     // Sabit yükseklik: fontSize * lineHeight
     final double fixedHeight = fontSize * lineHeight;
-    final isDarkTheme = Provider.of<ThemeProvider>(context, listen: false).isDarkTheme;
 
     int n = text.length;
     // Karakter sayısına göre delay değeri:
@@ -932,7 +1078,7 @@ class _ConversationTileState extends State<ConversationTile>
           fontSize: fontSize,
           fontWeight: FontWeight.w500,
           height: lineHeight,
-          color: (isDarkTheme ? Colors.white : Colors.black).withOpacity(opacity),
+          color: (AppColors.primaryColor).withOpacity(opacity),
         ),
       ));
     }
@@ -944,7 +1090,7 @@ class _ConversationTileState extends State<ConversationTile>
         fontSize: fontSize,
         fontWeight: FontWeight.w500,
         height: lineHeight,
-        color: (isDarkTheme ? Colors.white : Colors.black),
+        color: (AppColors.opposedPrimaryColor),
       ),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
@@ -978,31 +1124,26 @@ class _ConversationTileState extends State<ConversationTile>
     );
   }
 
-  /// Hangi animasyonun çalıştığına göre uygun widget’ı döndürür.
   Widget _buildAnimatedTitleWidget() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    TextStyle textStyle = GoogleFonts.poppins(
+      fontSize: screenWidth * 0.045,
+      fontWeight: FontWeight.w500,
+      height: 1.2,
+      color: AppColors.opposedPrimaryColor,
+    );
+
     if (_fadeOutController.isAnimating) {
       return _buildAnimatedTitle(_oldTitle, _fadeOutController, true);
     }
     if (_fadeInController.isAnimating) {
       return _buildAnimatedTitle(_displayedTitle, _fadeInController, false);
     }
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isDarkTheme = Provider.of<ThemeProvider>(context, listen: false).isDarkTheme;
-    // Tamamlanmış animasyon durumunda düz metin (sabit stil ve satır yüksekliği)
-    return Text(
-      _displayedTitle,
-      style: GoogleFonts.poppins(
-        fontSize: screenWidth * 0.045,
-        fontWeight: FontWeight.w500,
-        height: 1.2,
-        color: isDarkTheme ? Colors.white : Colors.black,
-      ),
+    return FadingOverflowText(
+      text: _displayedTitle,
+      style: textStyle,
       maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      textHeightBehavior: const TextHeightBehavior(
-        applyHeightToFirstAscent: false,
-        applyHeightToLastDescent: false,
-      ),
+      textAlign: TextAlign.start,
     );
   }
 
@@ -1014,7 +1155,6 @@ class _ConversationTileState extends State<ConversationTile>
       _currentlyOpenTileState = null;
     }
 
-    final isDarkTheme = Provider.of<ThemeProvider>(context, listen: false).isDarkTheme;
     final loc = AppLocalizations.of(context)!;
 
     final renderBox = _threeDotKey.currentContext!.findRenderObject() as RenderBox;
@@ -1024,12 +1164,15 @@ class _ConversationTileState extends State<ConversationTile>
     final screenHeight = MediaQuery.of(context).size.height;
     final screenWidth = MediaQuery.of(context).size.width;
 
-    final double panelHeight = screenHeight * 0.2; // around 160px on 800px screen
-    final double panelWidth = screenWidth * 0.3;  // around 120px if screenWidth=400
+    final double panelHeight = screenHeight * 0.2;
+    final double panelWidth = screenWidth * 0.3;
     final bool openUpwards = (offset.dy + size.height + panelHeight + 20) > screenHeight;
 
     double panelTop = openUpwards ? (offset.dy - panelHeight) : (offset.dy + size.height);
     double panelRight = screenWidth - (offset.dx + size.width);
+
+
+    final chatCardBackgroundColor = AppColors.quaternaryColor.withOpacity(0.85);
 
     _overlayEntry = OverlayEntry(
       builder: (overlayContext) {
@@ -1054,13 +1197,12 @@ class _ConversationTileState extends State<ConversationTile>
                           horizontal: screenWidth * 0.02,
                         ),
                         decoration: BoxDecoration(
-                          color: isDarkTheme
-                              ? const Color(0xFF121212)
-                              : const Color(0xFFEDEDED),
+                          // Panelin arka plan rengi artık sohbet kartı ile aynı:
+                          color: chatCardBackgroundColor,
                           borderRadius: BorderRadius.circular(screenWidth * 0.02),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.2),
+                              color: AppColors.shadow,
                               blurRadius: screenWidth * 0.015,
                               offset: Offset(0, screenHeight * 0.003),
                             ),
@@ -1074,17 +1216,14 @@ class _ConversationTileState extends State<ConversationTile>
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
                                 _ActionPanelButton(
-                                  icon: widget.manager.isStarred
-                                      ? Icons.star
-                                      : Icons.star_border,
+                                  iconAsset: widget.manager.isStarred
+                                      ? 'assets/star.svg'
+                                      : 'assets/starBordered.svg',
                                   iconColor: widget.manager.isStarred
                                       ? Colors.amber
-                                      : (isDarkTheme
-                                      ? Colors.white
-                                      : Colors.black),
+                                      : AppColors.opposedPrimaryColor,
                                   text: loc.starConversation,
-                                  textColor:
-                                  isDarkTheme ? Colors.white : Colors.black,
+                                  textColor: AppColors.opposedPrimaryColor,
                                   onPressed: () async {
                                     await _removeOverlayWithAnimation();
                                     widget.onToggleStar();
@@ -1093,19 +1232,17 @@ class _ConversationTileState extends State<ConversationTile>
                                 SizedBox(height: screenHeight * 0.01),
                                 _ActionPanelButton(
                                   iconAsset: 'assets/editConversationTitle.svg',
-                                  iconColor:
-                                  isDarkTheme ? Colors.white : Colors.black,
+                                  iconColor: AppColors.opposedPrimaryColor,
                                   text: loc.editConversationTitle,
-                                  textColor:
-                                  isDarkTheme ? Colors.white : Colors.black,
+                                  textColor: AppColors.opposedPrimaryColor,
                                   onPressed: () {
-                                    _showEditDialog(isDarkTheme, loc);
+                                    _showEditDialog(loc);
                                     _removeOverlay();
                                   },
                                 ),
                                 SizedBox(height: screenHeight * 0.01),
                                 _ActionPanelButton(
-                                  iconAsset: 'assets/deleteConversation.svg',
+                                  iconAsset: 'assets/delete.svg',
                                   iconColor: Colors.red,
                                   text: loc.remove,
                                   textColor: Colors.red,
@@ -1147,8 +1284,9 @@ class _ConversationTileState extends State<ConversationTile>
     }
   }
 
-  void _showEditDialog(bool isDarkTheme, AppLocalizations loc) {
-    if (_isDialogOpen) return; // Eğer diyalog zaten açıksa, yeni diyalog açılmasın
+// Updated _ConversationTileState._showEditDialog (signature updated)
+  void _showEditDialog(AppLocalizations loc) {
+    if (_isDialogOpen) return; // Prevent multiple dialogs
     _isDialogOpen = true;
 
     final TextEditingController controller = TextEditingController(
@@ -1168,13 +1306,13 @@ class _ConversationTileState extends State<ConversationTile>
             child: Container(
               width: screenWidth * 0.8,
               decoration: BoxDecoration(
-                color: isDarkTheme ? const Color(0xFF2D2F2E) : Colors.grey[200],
+                color: AppColors.background,
                 borderRadius: BorderRadius.circular(screenWidth * 0.03),
               ),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  // Üst kısım: Başlık ve normal input field
+                  // Üst kısım: Başlık ve input field
                   Padding(
                     padding: EdgeInsets.all(screenWidth * 0.04),
                     child: Column(
@@ -1182,7 +1320,7 @@ class _ConversationTileState extends State<ConversationTile>
                         Text(
                           loc.editConversationTitle,
                           style: TextStyle(
-                            color: isDarkTheme ? Colors.white : Colors.black,
+                            color: AppColors.opposedPrimaryColor,
                             fontSize: screenWidth * 0.05,
                             fontWeight: FontWeight.bold,
                           ),
@@ -1194,35 +1332,35 @@ class _ConversationTileState extends State<ConversationTile>
                           decoration: InputDecoration(
                             labelText: loc.newTitle,
                             labelStyle: TextStyle(
-                              color: isDarkTheme ? Colors.white : Colors.black,
+                              color: AppColors.opposedPrimaryColor,
                             ),
                             enabledBorder: OutlineInputBorder(
                               borderSide: BorderSide(
-                                color: isDarkTheme ? Colors.white54 : Colors.black54,
+                                color: AppColors.textFieldBorder,
                               ),
-                              borderRadius: BorderRadius.circular(screenWidth * 0.02),
+                              borderRadius:
+                              BorderRadius.circular(screenWidth * 0.02),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderSide: BorderSide(
-                                color: isDarkTheme ? Colors.white : Colors.black,
+                                color: AppColors.opposedPrimaryColor,
                               ),
-                              borderRadius: BorderRadius.circular(screenWidth * 0.02),
+                              borderRadius:
+                              BorderRadius.circular(screenWidth * 0.02),
                             ),
                           ),
                           style: TextStyle(
-                            color: isDarkTheme ? Colors.white : Colors.black,
+                            color: AppColors.opposedPrimaryColor,
                           ),
                         ),
                       ],
                     ),
                   ),
-                  // Çizgi ayırıcı
                   Divider(
-                    color: isDarkTheme ? Colors.white30 : Colors.black26,
+                    color: AppColors.dialogDivider,
                     thickness: 0.5,
                     height: 1,
                   ),
-                  // Butonlar bölümü (İptal - Kaydet)
                   IntrinsicHeight(
                     child: Row(
                       children: [
@@ -1231,16 +1369,18 @@ class _ConversationTileState extends State<ConversationTile>
                             onPressed: () => Navigator.of(ctx).pop(),
                             style: TextButton.styleFrom(
                               foregroundColor: Colors.red,
-                              padding: EdgeInsets.symmetric(vertical: screenWidth * 0.04),
+                              padding: EdgeInsets.symmetric(
+                                  vertical: screenWidth * 0.04),
                             ),
                             child: Text(
                               loc.cancel,
-                              style: TextStyle(fontSize: screenWidth * 0.035),
+                              style:
+                              TextStyle(fontSize: screenWidth * 0.035),
                             ),
                           ),
                         ),
                         VerticalDivider(
-                          color: isDarkTheme ? Colors.white30 : Colors.black26,
+                          color: AppColors.dialogDivider,
                           thickness: 0.5,
                           width: 1,
                         ),
@@ -1255,11 +1395,13 @@ class _ConversationTileState extends State<ConversationTile>
                             },
                             style: TextButton.styleFrom(
                               foregroundColor: Colors.blue,
-                              padding: EdgeInsets.symmetric(vertical: screenWidth * 0.04),
+                              padding: EdgeInsets.symmetric(
+                                  vertical: screenWidth * 0.04),
                             ),
                             child: Text(
                               loc.save,
-                              style: TextStyle(fontSize: screenWidth * 0.035),
+                              style:
+                              TextStyle(fontSize: screenWidth * 0.035),
                             ),
                           ),
                         ),
@@ -1276,7 +1418,6 @@ class _ConversationTileState extends State<ConversationTile>
         return FadeTransition(opacity: animation, child: child);
       },
     ).then((_) {
-      // Diyalog kapandıktan sonra bayrağı sıfırla
       _isDialogOpen = false;
     });
   }
@@ -1295,7 +1436,11 @@ class _ConversationTileState extends State<ConversationTile>
   }
 
   Widget _getLastMessageSnippet(String lastMessageText, String lastPhotoPath) {
-    final isDarkTheme = Provider.of<ThemeProvider>(context).isDarkTheme;
+    final screenWidth = MediaQuery.of(context).size.width;
+    TextStyle messageStyle = TextStyle(
+      color: AppColors.tertiaryColor,
+      fontSize: screenWidth * 0.03,
+    );
 
     if (lastPhotoPath.isNotEmpty) {
       if (lastMessageText.trim().isNotEmpty) {
@@ -1303,20 +1448,17 @@ class _ConversationTileState extends State<ConversationTile>
           children: [
             SvgPicture.asset(
               'assets/photo.svg',
-              width: MediaQuery.of(context).size.width * 0.04,
-              height: MediaQuery.of(context).size.width * 0.04,
-              color: isDarkTheme ? Colors.grey[300] : Colors.grey[800],
+              width: screenWidth * 0.04,
+              height: screenWidth * 0.04,
+              color: AppColors.tertiaryColor,
             ),
-            SizedBox(width: MediaQuery.of(context).size.width * 0.01),
+            SizedBox(width: screenWidth * 0.01),
             Expanded(
-              child: Text(
-                lastMessageText,
-                style: TextStyle(
-                  color: isDarkTheme ? Colors.grey[300] : Colors.grey[800],
-                  fontSize: MediaQuery.of(context).size.width * 0.03,
-                ),
-                overflow: TextOverflow.ellipsis,
+              child: FadingOverflowText(
+                text: lastMessageText,
+                style: messageStyle,
                 maxLines: 1,
+                textAlign: TextAlign.start,
               ),
             ),
           ],
@@ -1324,21 +1466,17 @@ class _ConversationTileState extends State<ConversationTile>
       } else {
         return SvgPicture.asset(
           'assets/photo.svg',
-          width: MediaQuery.of(context).size.width * 0.04,
-          height: MediaQuery.of(context).size.width * 0.04,
-          color: isDarkTheme ? Colors.grey[300] : Colors.grey[800],
+          width: screenWidth * 0.04,
+          height: screenWidth * 0.04,
+          color: AppColors.tertiaryColor,
         );
       }
     } else {
-      return Text(
-        lastMessageText,
-        style: TextStyle(
-          color: isDarkTheme ? Colors.grey[300] : Colors.grey[800],
-          fontSize: MediaQuery.of(context).size.width * 0.03,
-        ),
-        overflow: TextOverflow.ellipsis,
+      return FadingOverflowText(
+        text: lastMessageText,
+        style: messageStyle,
         maxLines: 1,
-        softWrap: false,
+        textAlign: TextAlign.start,
       );
     }
   }
@@ -1347,26 +1485,21 @@ class _ConversationTileState extends State<ConversationTile>
     mainScreenKey.currentState?.openConversation(widget.manager);
   }
 
+  String formatExtension(String ext) {
+    List<String> parts = ext.split('-');
+    List<String> capitalizedParts = parts.map((s) {
+      if (s.isEmpty) return s;
+      return s[0].toUpperCase() + s.substring(1);
+    }).toList();
+    return capitalizedParts.join(" ");
+  }
 
+// Updated _ConversationTileState.build
   @override
   Widget build(BuildContext context) {
-    if (widget.hideWhenUnstarred && !widget.manager.isStarred) {
-      return const SizedBox.shrink();
-    }
-    final isDarkTheme = Provider.of<ThemeProvider>(context).isDarkTheme;
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
-    Color backgroundColor = isDarkTheme ? Colors.grey[800]! : Colors.grey[300]!;
-    if (widget.manager.modelImagePath.isNotEmpty &&
-        widget.manager.modelImagePath.endsWith('.png')) {
-      backgroundColor = isDarkTheme
-          ? const Color(0xFF121212)
-          : const Color(0xFFEDEDED);
-    }
-    final double horizontalMargin = screenWidth * 0.03;
-    final double verticalMargin = screenHeight * 0.01;
-    final double tilePadding = screenWidth * 0.04;
-    final double imageSize = screenWidth * 0.15;
+    final Color backgroundColor = AppColors.quaternaryColor;
     return GestureDetector(
       onTapDown: (_) {
         _isLongPress = false;
@@ -1390,18 +1523,16 @@ class _ConversationTileState extends State<ConversationTile>
       },
       child: Container(
         margin: EdgeInsets.symmetric(
-          horizontal: horizontalMargin,
-          vertical: verticalMargin,
+          horizontal: screenWidth * 0.03,
+          vertical: screenHeight * 0.01,
         ),
-        padding: EdgeInsets.all(tilePadding),
+        padding: EdgeInsets.all(screenWidth * 0.04),
         decoration: BoxDecoration(
-          color: isDarkTheme ? const Color(0xFF121212) : const Color(0xFFEDEDED),
+          color: backgroundColor,
           borderRadius: BorderRadius.circular(screenWidth * 0.03),
           boxShadow: [
             BoxShadow(
-              color: isDarkTheme
-                  ? Colors.black.withOpacity(0.2)
-                  : Colors.grey.withOpacity(0.1),
+              color: AppColors.shadow,
               blurRadius: screenWidth * 0.015,
               offset: Offset(0, screenHeight * 0.003),
             ),
@@ -1415,8 +1546,8 @@ class _ConversationTileState extends State<ConversationTile>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  width: imageSize,
-                  height: imageSize,
+                  width: screenWidth * 0.15,
+                  height: screenWidth * 0.15,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(screenWidth * 0.02),
                     image: widget.manager.modelImagePath.isNotEmpty
@@ -1431,7 +1562,7 @@ class _ConversationTileState extends State<ConversationTile>
                       ? Icon(
                     Icons.image,
                     color: Colors.grey,
-                    size: imageSize * 0.5,
+                    size: screenWidth * 0.075,
                   )
                       : null,
                 ),
@@ -1444,33 +1575,48 @@ class _ConversationTileState extends State<ConversationTile>
                         children: [
                           Expanded(
                             child: Baseline(
-                              baseline: screenWidth * 0.045 * 0.8, // veya uygun gördüğünüz sabit bir değer
+                              baseline: screenWidth * 0.045 * 0.8,
                               baselineType: TextBaseline.alphabetic,
                               child: _buildAnimatedTitleWidget(),
                             ),
                           ),
                           SizedBox(width: screenWidth * 0.02),
                           Baseline(
-                            baseline: screenWidth * 0.045 * 0.8, // Aynı baz çizgi değeri
+                            baseline: screenWidth * 0.045 * 0.8,
                             baselineType: TextBaseline.alphabetic,
                             child: Text(
                               _formatDate(widget.manager.lastMessageDate),
                               style: TextStyle(
-                                color: isDarkTheme ? Colors.grey : Colors.grey[600],
+                                color: AppColors.tertiaryColor,
                                 fontSize: screenWidth * 0.03,
                               ),
                             ),
                           ),
                         ],
                       ),
-                      Text(
-                        widget.manager.modelTitle,
-                        style: GoogleFonts.poppins(
-                          fontSize: screenWidth * 0.03,
-                          fontWeight: FontWeight.w400,
-                          color: isDarkTheme ? Colors.white : Colors.black,
-                        ),
-                        overflow: TextOverflow.ellipsis,
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              widget.manager.modelTitle +
+                                  (widget.manager.modelId.contains('-')
+                                      ? " " +
+                                      formatExtension(
+                                        widget.manager.modelId
+                                            .split('-')
+                                            .sublist(1)
+                                            .join('-'),
+                                      )
+                                      : ""),
+                              style: GoogleFonts.poppins(
+                                fontSize: screenWidth * 0.03,
+                                fontWeight: FontWeight.w400,
+                                color: AppColors.opposedPrimaryColor,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
                       ),
                       SizedBox(height: screenHeight * 0.002),
                       Row(
@@ -1509,7 +1655,6 @@ class _ConversationTileState extends State<ConversationTile>
   }
 }
 
-/// Aksiyon panelindeki buton (Sil, Düzenle, vb.)
 class _ActionPanelButton extends StatelessWidget {
   final IconData? icon;
   final String? iconAsset;
@@ -1531,7 +1676,14 @@ class _ActionPanelButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final double iconSize = screenWidth * 0.06; // ~24px if screenWidth ~400
+    // Varsayılan kapsayıcı boyutu, örneğin diğer ikonlar için kullanılan boyut
+    final double defaultIconContainerSize = screenWidth * 0.05;
+    // Eğer star.svg veya starBordered.svg kullanılıyorsa, ikon boyutunu biraz küçülteceğiz;
+    // ancak kapsayıcı boyutu defaultIconContainerSize olacak.
+    final double iconSize = (iconAsset != null &&
+        (iconAsset == 'assets/star.svg' || iconAsset == 'assets/starBordered.svg'))
+        ? screenWidth * 0.04
+        : defaultIconContainerSize;
 
     return TextButton(
       onPressed: onPressed,
@@ -1546,19 +1698,31 @@ class _ActionPanelButton extends StatelessWidget {
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.center, // Dikeyde ortalamak için
         children: [
-          if (icon != null)
-            Icon(
-              icon,
-              color: iconColor,
-              size: iconSize,
-            ),
           if (iconAsset != null)
-            SvgPicture.asset(
-              iconAsset!,
-              color: iconColor,
-              width: iconSize,
-              height: iconSize,
+          // Kapsayıcıya sabit boyut veriyoruz; ikon, boyutu küçültülse bile container aynı kalır.
+            Container(
+              width: defaultIconContainerSize,
+              height: defaultIconContainerSize,
+              alignment: Alignment.center,
+              child: SvgPicture.asset(
+                iconAsset!,
+                color: iconColor,
+                width: iconSize,
+                height: iconSize,
+              ),
+            ),
+          if (icon != null)
+            Container(
+              width: defaultIconContainerSize,
+              height: defaultIconContainerSize,
+              alignment: Alignment.center,
+              child: Icon(
+                icon,
+                color: iconColor,
+                size: iconSize,
+              ),
             ),
           SizedBox(width: screenWidth * 0.03),
           Text(
@@ -1574,49 +1738,6 @@ class _ActionPanelButton extends StatelessWidget {
   }
 }
 
-/// Updated _SkeletonChatTile with equalized sizes to match ConversationTile
-class _SkeletonChatTile extends StatelessWidget {
-  const _SkeletonChatTile({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    final isDarkTheme = Provider.of<ThemeProvider>(context).isDarkTheme;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
-
-    // Define padding similar to ConversationTile
-    final horizontalPadding = screenWidth * 0.03; // Matches ConversationTile's horizontal margin
-    final verticalPadding = screenHeight * 0.01;  // Matches ConversationTile's vertical margin
-
-    // Calculate container width based on padding
-    final containerWidth = screenWidth - 2 * (horizontalPadding + screenWidth * 0.04);
-    // screenWidth * 0.04 is the padding inside ConversationTile
-
-    // Define height based on image size and padding
-    final imageSize = screenWidth * 0.15; // Same as ConversationTile's image size
-    final containerHeight = imageSize + 2 * (screenHeight * 0.02); // Image size plus vertical padding
-
-    return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: horizontalPadding,
-        vertical: verticalPadding,
-      ),
-      child: Shimmer.fromColors(
-        baseColor: isDarkTheme ? Colors.grey[900]! : Colors.grey[300]!,
-        highlightColor: isDarkTheme ? Colors.grey[700]! : Colors.grey[100]!,
-        child: Container(
-          width: containerWidth,
-          height: containerHeight,
-          decoration: BoxDecoration(
-            color: isDarkTheme ? Colors.grey[700] : Colors.grey[300],
-            borderRadius: BorderRadius.circular(screenWidth * 0.03),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _SkeletonChatList extends StatelessWidget {
   const _SkeletonChatList({Key? key}) : super(key: key);
 
@@ -1627,6 +1748,157 @@ class _SkeletonChatList extends StatelessWidget {
       itemBuilder: (context, index) {
         return const _SkeletonChatTile();
       },
+    );
+  }
+}
+
+
+// Updated _SkeletonChatTile.build
+class _SkeletonChatTile extends StatelessWidget {
+  const _SkeletonChatTile({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    // Define padding similar to ConversationTile
+    final horizontalPadding = screenWidth * 0.03;
+    final verticalPadding = screenHeight * 0.01;
+
+    // Calculate container width based on padding
+    final containerWidth =
+        screenWidth - 2 * (horizontalPadding + screenWidth * 0.04);
+
+    // Define height based on image size and padding
+    final imageSize = screenWidth * 0.15;
+    final containerHeight = imageSize + 2 * (screenHeight * 0.02);
+
+    return Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: horizontalPadding,
+        vertical: verticalPadding,
+      ),
+      child: Shimmer.fromColors(
+        baseColor: AppColors.shimmerBase,
+        highlightColor: AppColors.shimmerHighlight,
+        child: Container(
+          width: containerWidth,
+          height: containerHeight,
+          decoration: BoxDecoration(
+            color: AppColors.tertiaryColor,
+            borderRadius: BorderRadius.circular(screenWidth * 0.03),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class FadingOverflowText extends StatelessWidget {
+  final String text;
+  final TextStyle? style;
+  final TextAlign textAlign;
+  final int maxLines;
+
+  /// Varsayılan olarak son 4 karakteri fade'lemek isteriz
+  final int fadeCharsCount;
+
+  /// Son fade edilecek karakterlerin opaklıkları (soldan sağa).
+  /// Örneğin [0.8, 0.6, 0.4, 0.2].
+  final List<double> fadeOpacities;
+
+  const FadingOverflowText({
+    Key? key,
+    required this.text,
+    this.style,
+    this.textAlign = TextAlign.start,
+    this.maxLines = 1,
+    this.fadeCharsCount = 4,
+    this.fadeOpacities = const [0.8, 0.6, 0.4, 0.2],
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    // 1) Önce metnin "sığıp sığmadığını" ölçüyoruz.
+    final textPainter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      maxLines: maxLines,
+      textDirection: Directionality.of(context),
+    );
+
+    // Bu ölçümü yaparken genişliği "sonsuz" alıyoruz,
+    // bu durumda metin kesinlikle tek satıra sığmayabilir.
+    textPainter.layout(minWidth: 0, maxWidth: double.infinity);
+
+    bool isOverflowing = textPainter.didExceedMaxLines;
+
+    // 2) Taşma yoksa direkt normal Text döndür
+    if (!isOverflowing) {
+      return Text(
+        text,
+        style: style,
+        maxLines: maxLines,
+        overflow: TextOverflow.clip,
+        textAlign: textAlign,
+      );
+    }
+
+    // 3) Taşma varsa, "char by char fade" uyguluyoruz.
+    final int n = text.length;
+
+    // Eğer metin fadeCharsCount karakterden kısaysa, eldeki karakter kadar fade uyguluyoruz.
+    final int actualFadeCount = (n < fadeCharsCount) ? n : fadeCharsCount;
+
+    // Fade'e başlayacağımız index (örn. n - 4)
+    final int fadeStartIndex = n - actualFadeCount;
+
+    // Normal kısım: 0..(fadeStartIndex)
+    final String normalPart = text.substring(0, fadeStartIndex);
+
+    // Fade uygulanacak kısım: (fadeStartIndex..n)
+    final String fadingPart = text.substring(fadeStartIndex);
+
+    // Her karakterin opaklığını fadeOpacities dizisinden alıyoruz.
+    List<double> opacitiesToUse = [];
+    for (int i = 0; i < actualFadeCount; i++) {
+      if (i < fadeOpacities.length) {
+        opacitiesToUse.add(fadeOpacities[i]);
+      } else {
+        opacitiesToUse.add(fadeOpacities.last);
+      }
+    }
+
+    // RichText kullanarak karakter karakter fade efekti uyguluyoruz:
+    List<InlineSpan> spans = [];
+
+    // Normal kısım (tam opak)
+    if (normalPart.isNotEmpty) {
+      spans.add(TextSpan(
+        text: normalPart,
+        style: style,
+      ));
+    }
+
+    // Fade uygulanacak kısım: her karakter için opaklık ayarlanıyor.
+    for (int i = 0; i < fadingPart.length; i++) {
+      double fadeOpacity = (i < opacitiesToUse.length)
+          ? opacitiesToUse[i]
+          : opacitiesToUse.last;
+
+      spans.add(TextSpan(
+        text: fadingPart[i],
+        style: style?.copyWith(
+          color: style?.color?.withOpacity(fadeOpacity),
+        ),
+      ));
+    }
+
+    return RichText(
+      maxLines: maxLines,
+      overflow: TextOverflow.clip,
+      textAlign: textAlign,
+      text: TextSpan(children: spans),
     );
   }
 }

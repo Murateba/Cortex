@@ -11,19 +11,21 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+import 'chat/chat.dart';
 import 'notifications.dart';
 import 'theme.dart';
+import 'package:flutter/foundation.dart';
 
 ///------------------------------------------------------------------
 /// Model: Kredi Paketi
 ///------------------------------------------------------------------
 class CreditPackage {
-  final String credits;
+  final int amount;
   final String productId;
   final String price;
 
   CreditPackage({
-    required this.credits,
+    required this.amount,
     required this.productId,
     required this.price,
   });
@@ -42,11 +44,11 @@ class PremiumScreen extends StatefulWidget {
 class _PremiumScreenState extends State<PremiumScreen>
     with SingleTickerProviderStateMixin {
   /// Abonelik planları
-  final List<String> planTypes = ['new', 'plus', 'pro', 'ultra'];
-
-  /// Kullanıcının seçtiği seçenekler (yıllık/aylık vb.)
+  final List<String> planTypes = ['plus', 'pro', 'ultra'];
+  final GlobalKey<_CreditContentWidgetState> _creditKey = GlobalKey<_CreditContentWidgetState>();
+  final bool _isTesting = !kReleaseMode;
+  /// Kullanıcının seçtiği sensibler (yıllık/aylık vb.)
   Map<String, String> selectedOptions = {
-    'new': 'monthly',
     'plus': 'monthly',
     'pro': 'monthly',
     'ultra': 'monthly',
@@ -59,16 +61,14 @@ class _PremiumScreenState extends State<PremiumScreen>
   CreditPackage? _selectedCreditPackage;
   /// Kredi ürün ID'leri
   static const List<String> _creditProductIds = [
-    'credit_100',
-    'credit_500',
-    'credit_1000',
-    'credit_2500',
-    'credit_5000',
+    'credits_100',
+    'credits_500',
+    'credits_1000',
+    'credits_2500',
+    'credits_5000',
   ];
 
   /// Ürün ID'leri (örnek)
-  static const String _monthlySubscriptionNew = 'new_plan_monthly';
-  static const String _annualSubscriptionNew = 'new_plan_annual';
   static const String _monthlySubscriptionPlus = 'vertex_ai_monthly_sub';
   static const String _annualSubscriptionPlus = 'vertex_ai_annual_sub';
   static const String _monthlySubscriptionPro = 'cortex_pro_monthly';
@@ -86,34 +86,17 @@ class _PremiumScreenState extends State<PremiumScreen>
   /// Kullanıcının mevcut abonelik seviyesi
   int _hasCortexSubscription = 0;
 
+  String? _activeSubscriptionOption;
+
   /// Sayfalar arası geçiş (PageView)
   late PageController _pageController;
-  int _currentPage = 1; // 0 => new, 1 => plus, 2 => pro, 3 => ultra
-
-  /// Test modu bayrağı
-  bool _isTesting = true;
+  int _currentPage = 1;
 
   /// Sorgulanan ürünler (abonelik planları için)
   List<ProductDetails> _subscriptions = [];
 
   /// Örnek (Mock) ürün listesi (Test amaçlı)
   List<ProductDetails> _mockSubscriptions = [
-    ProductDetails(
-      id: 'new_plan_monthly',
-      title: 'New Monthly',
-      description: 'Access all New features on a monthly basis.',
-      price: '\$2.99',
-      currencyCode: 'USD',
-      rawPrice: 2.99,
-    ),
-    ProductDetails(
-      id: 'new_plan_annual',
-      title: 'New Annual',
-      description: 'Access all New features on an annual basis.',
-      price: '\$29.99',
-      currencyCode: 'USD',
-      rawPrice: 29.99,
-    ),
     ProductDetails(
       id: 'vertex_ai_monthly_sub',
       title: 'Plus Monthly',
@@ -179,6 +162,18 @@ class _PremiumScreenState extends State<PremiumScreen>
           _currentPage = next;
           _selectedCreditPackage = null;
         });
+        // Eğer kredi ekranına (indeks 0) geçilmişse, default seçimi alalım.
+        if (next == 0) {
+          // GlobalKey kullanarak CreditContentWidget state'ine erişiyoruz.
+          Future.microtask(() {
+            if (_creditKey.currentState != null &&
+                _creditKey.currentState!._creditPackages.isNotEmpty) {
+              setState(() {
+                _selectedCreditPackage = _creditKey.currentState!._creditPackages[0];
+              });
+            }
+          });
+        }
       }
     });
 
@@ -225,8 +220,6 @@ class _PremiumScreenState extends State<PremiumScreen>
 
     // Sorgulanacak ürün ID'leri
     const Set<String> kIds = <String>{
-      _monthlySubscriptionNew,
-      _annualSubscriptionNew,
       _monthlySubscriptionPlus,
       _annualSubscriptionPlus,
       _monthlySubscriptionPro,
@@ -260,8 +253,7 @@ class _PremiumScreenState extends State<PremiumScreen>
         _subscriptions = response.productDetails;
         _loading = false;
       });
-    }
-    else if (_isTesting) {
+    } else if (_isTesting) {
       // Test modunda mock ürünleri
       setState(() {
         _subscriptions = _mockSubscriptions;
@@ -269,7 +261,6 @@ class _PremiumScreenState extends State<PremiumScreen>
       });
     }
 
-    // Kullanıcının abonelik seviyesini Firestore'dan al
     User? user = _auth.currentUser;
     if (user != null) {
       try {
@@ -278,11 +269,25 @@ class _PremiumScreenState extends State<PremiumScreen>
             .doc(user.uid)
             .get();
         if (userDoc.exists) {
-          _hasCortexSubscription = userDoc.get('hasCortexSubscription') ?? 0;
-          // (Örneğin max 4 ya da 6 diyorsanız kontrol edebilirsiniz)
+          setState(() {
+            _hasCortexSubscription = userDoc.get('hasCortexSubscription') ?? 0;
+            _activeSubscriptionOption = userDoc.get('activeSubscriptionOption');
+
+            // Eğer kullanıcının abonesi plus ise ve yıllık (annual) aktifse, doğrudan selectedOptions'ı güncelleyelim.
+            if (_hasCortexSubscription == 1 && _activeSubscriptionOption == 'annual') {
+              selectedOptions['plus'] = 'annual';
+            } else if (_hasCortexSubscription == 2 && _activeSubscriptionOption == 'annual') {
+              selectedOptions['pro'] = 'annual';
+            } else if (_hasCortexSubscription == 3 && _activeSubscriptionOption == 'annual') {
+              selectedOptions['ultra'] = 'annual';
+            }
+          });
         }
       } catch (e) {
-        _hasCortexSubscription = 0;
+        setState(() {
+          _hasCortexSubscription = 0;
+          _activeSubscriptionOption = null;
+        });
       }
     }
   }
@@ -334,18 +339,6 @@ class _PremiumScreenState extends State<PremiumScreen>
       subscriptionId = (selectedOption == 'annual')
           ? _annualSubscriptionUltra
           : _monthlySubscriptionUltra;
-    } else if (planType == 'new') {
-      // Yeni plan (placeholder); isterseniz satın almayı aktifleştirebilirsiniz
-      subscriptionId = (selectedOption == 'annual')
-          ? _annualSubscriptionNew
-          : _monthlySubscriptionNew;
-
-      // Örnek: Şimdilik “kullanıma hazır değil” diyelim
-      _showCustomNotification(
-        message: "Yeni plan henüz kullanıma hazır değil.",
-        isSuccess: false,
-      );
-      return;
     }
     else {
       // 'plus'
@@ -406,18 +399,24 @@ class _PremiumScreenState extends State<PremiumScreen>
         final purchasedId = purchaseDetails.productID;
         int newSubscription = 0;
 
-        if (purchasedId == _monthlySubscriptionPlus ||
-            purchasedId == _annualSubscriptionPlus) {
+        if (purchasedId == _annualSubscriptionPlus) {
           newSubscription = 1;
-        } else if (purchasedId == _monthlySubscriptionPro ||
-            purchasedId == _annualSubscriptionPro) {
+          _activeSubscriptionOption = 'annual';
+        } else if (purchasedId == _monthlySubscriptionPlus) {
+          newSubscription = 1;
+          _activeSubscriptionOption = 'monthly';
+        } else if (purchasedId == _annualSubscriptionPro) {
           newSubscription = 2;
-        } else if (purchasedId == _monthlySubscriptionUltra ||
-            purchasedId == _annualSubscriptionUltra) {
+          _activeSubscriptionOption = 'annual';
+        } else if (purchasedId == _monthlySubscriptionPro) {
+          newSubscription = 2;
+          _activeSubscriptionOption = 'monthly';
+        } else if (purchasedId == _annualSubscriptionUltra) {
           newSubscription = 3;
-        } else if (purchasedId == _monthlySubscriptionNew ||
-            purchasedId == _annualSubscriptionNew) {
-          newSubscription = 4;
+          _activeSubscriptionOption = 'annual';
+        } else if (purchasedId == _monthlySubscriptionUltra) {
+          newSubscription = 3;
+          _activeSubscriptionOption = 'monthly';
         }
 
         if (newSubscription == 0) {
@@ -432,11 +431,11 @@ class _PremiumScreenState extends State<PremiumScreen>
           return;
         }
 
-        // Firestore güncelle
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .update({'hasCortexSubscription': newSubscription});
+        // Firestore güncellemesi: üretim modunda olduğu gibi
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+          'hasCortexSubscription': newSubscription,
+          'activeSubscriptionOption': _activeSubscriptionOption,
+        });
 
         setState(() {
           _hasCortexSubscription = newSubscription;
@@ -446,8 +445,7 @@ class _PremiumScreenState extends State<PremiumScreen>
           message: AppLocalizations.of(context)!.purchaseSuccessful,
           isSuccess: true,
         );
-      }
-      catch (e) {
+      } catch (e) {
         setState(() {
           _errorOccurred = true;
           _errorMessage = AppLocalizations.of(context)!.updateFailed;
@@ -466,16 +464,15 @@ class _PremiumScreenState extends State<PremiumScreen>
   @override
   Widget build(BuildContext context) {
     final localizations = AppLocalizations.of(context)!;
-    final isDarkTheme = Provider.of<ThemeProvider>(context).isDarkTheme;
 
     return Scaffold(
-      backgroundColor: isDarkTheme ? const Color(0xFF090909) : Colors.white,
+      backgroundColor: AppColors.background,
       body: AnimatedSwitcher(
         duration: const Duration(milliseconds: 500),
         transitionBuilder: (child, animation) =>
             FadeTransition(opacity: animation, child: child),
         child: _errorOccurred
-            ? _buildErrorScreen(context, localizations, isDarkTheme)
+            ? _buildErrorScreen(context, localizations)
             : (_purchasePending || _loading)
             ? Container(
           key: const ValueKey('skeleton'),
@@ -483,11 +480,12 @@ class _PremiumScreenState extends State<PremiumScreen>
         )
             : Container(
           key: const ValueKey('content'),
-          child: _buildPremiumContent(context, localizations, isDarkTheme),
+          child: _buildPremiumContent(context, localizations),
         ),
       ),
     );
   }
+
 
   ///------------------------------------------------------------------
   /// _buildErrorScreen
@@ -495,9 +493,9 @@ class _PremiumScreenState extends State<PremiumScreen>
   Widget _buildErrorScreen(
       BuildContext context,
       AppLocalizations localizations,
-      bool isDarkTheme
       ) {
     final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
 
     return SafeArea(
       child: Padding(
@@ -509,7 +507,7 @@ class _PremiumScreenState extends State<PremiumScreen>
               child: IconButton(
                 icon: Icon(
                   Icons.close,
-                  color: isDarkTheme ? Colors.white : Colors.black,
+                  color: AppColors.opposedPrimaryColor,
                   size: screenWidth * 0.07,
                 ),
                 onPressed: () => Navigator.of(context).pop(),
@@ -522,19 +520,19 @@ class _PremiumScreenState extends State<PremiumScreen>
                   children: [
                     Icon(
                       Icons.error_outline,
-                      color: Colors.red,
+                      color: AppColors.warning,
                       size: screenWidth * 0.2,
                     ),
-                    SizedBox(height: screenWidth * 0.05),
+                    SizedBox(height: screenHeight * 0.05),
                     Text(
                       _errorMessage,
                       style: TextStyle(
                         fontSize: screenWidth * 0.045,
-                        color: isDarkTheme ? Colors.white : Colors.black,
+                        color: AppColors.opposedPrimaryColor,
                       ),
                       textAlign: TextAlign.center,
                     ),
-                    SizedBox(height: screenWidth * 0.075),
+                    SizedBox(height: screenHeight * 0.075),
                     ElevatedButton(
                       onPressed: () {
                         setState(() {
@@ -545,16 +543,13 @@ class _PremiumScreenState extends State<PremiumScreen>
                         _initializeStore();
                       },
                       style: ElevatedButton.styleFrom(
-                        foregroundColor:
-                        isDarkTheme ? Colors.black : Colors.white,
-                        backgroundColor:
-                        isDarkTheme ? Colors.white : Colors.black,
+                        foregroundColor: AppColors.primaryColor,
+                        backgroundColor: AppColors.opposedPrimaryColor,
                         shape: RoundedRectangleBorder(
-                          borderRadius:
-                          BorderRadius.circular(screenWidth * 0.075),
+                          borderRadius: BorderRadius.circular(screenWidth * 0.075),
                         ),
                         padding: EdgeInsets.symmetric(
-                          vertical: screenWidth * 0.04,
+                          vertical: screenHeight * 0.04,
                           horizontal: screenWidth * 0.125,
                         ),
                       ),
@@ -563,7 +558,7 @@ class _PremiumScreenState extends State<PremiumScreen>
                         style: TextStyle(
                           fontSize: screenWidth * 0.04,
                           fontWeight: FontWeight.bold,
-                          color: isDarkTheme ? Colors.black : Colors.white,
+                          color: AppColors.opposedPrimaryColor,
                         ),
                       ),
                     ),
@@ -580,159 +575,204 @@ class _PremiumScreenState extends State<PremiumScreen>
   ///------------------------------------------------------------------
   /// _buildSkeletonLoader (Shimmer)
   ///------------------------------------------------------------------
-  Widget _buildSkeletonLoader() {
-    final isDarkTheme = Provider.of<ThemeProvider>(context).isDarkTheme;
-    final screenWidth = MediaQuery.of(context).size.width;
 
-    return Shimmer.fromColors(
-      baseColor: isDarkTheme ? Colors.grey[700]! : Colors.grey[300]!,
-      highlightColor: isDarkTheme ? Colors.grey[500]! : Colors.grey[100]!,
-      child: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: screenWidth * 0.04,
-            vertical: screenWidth * 0.03,
-          ),
-          child: Column(
-            children: [
-              SizedBox(height: screenWidth * 0.035),
-              Align(
-                alignment: Alignment.center,
-                child: Container(
-                  width: screenWidth * 0.07,
-                  height: screenWidth * 0.07,
-                  decoration: const BoxDecoration(
-                    color: Colors.white,
-                    shape: BoxShape.circle,
+  Widget _buildSkeletonLoader() {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    return Container(
+      width: screenWidth,
+      height: screenHeight,
+      child: Shimmer.fromColors(
+        baseColor: AppColors.shimmerBase,
+        highlightColor: AppColors.shimmerHighlight,
+        child: SafeArea(
+          child: Padding(
+            padding: EdgeInsets.symmetric(
+              horizontal: screenWidth * 0.04,
+              vertical: screenHeight * 0.03,
+            ),
+            child: Column(
+              children: [
+                SizedBox(height: screenHeight * 0.01),
+                Align(
+                  alignment: Alignment.center,
+                  child: Container(
+                    width: screenWidth * 0.06,
+                    height: screenWidth * 0.07,
+                    decoration: BoxDecoration(
+                      color: AppColors.skeletonContainer,
+                      shape: BoxShape.circle,
+                    ),
                   ),
                 ),
-              ),
-              SizedBox(height: screenWidth * 0.025),
-              Expanded(
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: PageView(
-                        children: [
-                          _buildSkeletonPage(isDarkTheme),
-                          _buildSkeletonPage(isDarkTheme),
-                          _buildSkeletonPage(isDarkTheme),
-                          _buildSkeletonPage(isDarkTheme),
-                        ],
-                      ),
-                    ),
-                    SizedBox(height: screenWidth * 0.03),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(planTypes.length, (_) {
-                        return Container(
-                          margin: EdgeInsets.symmetric(
-                              horizontal: screenWidth * 0.01
-                          ),
-                          width: 12.0,
-                          height: 12.0,
-                          decoration: const BoxDecoration(
-                            color: Colors.grey,
-                            shape: BoxShape.circle,
-                          ),
-                        );
-                      }),
-                    ),
-                    SizedBox(height: screenWidth * 0.06),
-                  ],
+                SizedBox(height: screenHeight * 0.001),
+                Expanded(
+                  child: PageView(
+                    children: List.generate(4, (_) => _buildSkeletonPage()),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  ///------------------------------------------------------------------
-  /// _buildSkeletonPage
-  ///------------------------------------------------------------------
-  Widget _buildSkeletonPage(bool isDarkTheme) {
+  Widget _buildSkeletonPage() {
     final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
 
     return SingleChildScrollView(
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          SizedBox(height: screenWidth * 0.025),
+          SizedBox(height: screenHeight * 0.022),
           Container(
-            width: screenWidth * 0.55,
-            height: screenWidth * 0.12,
+            width: screenWidth * 0.65,
+            height: screenHeight * 0.05,
             decoration: BoxDecoration(
-              color: Colors.grey,
+              color: AppColors.skeletonContainer,
               borderRadius: BorderRadius.circular(screenWidth * 0.02),
             ),
           ),
-          SizedBox(height: screenWidth * 0.025),
+          SizedBox(height: screenHeight * 0.01),
           Container(
-            width: screenWidth * 0.85,
-            height: screenWidth * 0.04,
+            width: screenWidth * 0.75,
+            height: screenHeight * 0.025,
             decoration: BoxDecoration(
-              color: Colors.grey,
+              color: AppColors.skeletonContainer,
               borderRadius: BorderRadius.circular(screenWidth * 0.015),
             ),
           ),
-          SizedBox(height: screenWidth * 0.01),
+          SizedBox(height: screenHeight * 0.0016),
           Container(
-            width: screenWidth * 0.7,
-            height: screenWidth * 0.04,
+            width: screenWidth * 0.65,
+            height: screenHeight * 0.025,
             decoration: BoxDecoration(
-              color: Colors.grey,
+              color: AppColors.skeletonContainer,
               borderRadius: BorderRadius.circular(screenWidth * 0.015),
             ),
           ),
-          SizedBox(height: screenWidth * 0.05),
+          SizedBox(height: screenHeight * 0.01),
           Container(
             width: screenWidth * 0.25,
             height: screenWidth * 0.25,
             decoration: BoxDecoration(
-              color: Colors.grey,
+              color: AppColors.skeletonContainer,
               borderRadius: BorderRadius.circular(screenWidth * 0.04),
             ),
           ),
-          SizedBox(height: screenWidth * 0.05),
+          SizedBox(height: screenHeight * 0.005),
           Container(
             margin: EdgeInsets.symmetric(horizontal: screenWidth * 0.005),
-            height: screenWidth * 0.15,
+            height: screenHeight * 0.1,
             decoration: BoxDecoration(
-              color: Colors.grey,
+              color: AppColors.skeletonContainer,
               borderRadius: BorderRadius.circular(screenWidth * 0.035),
             ),
           ),
-          SizedBox(height: screenWidth * 0.03),
+          SizedBox(height: screenHeight * 0.009),
           Container(
             margin: EdgeInsets.symmetric(horizontal: screenWidth * 0.005),
-            height: screenWidth * 0.15,
+            height: screenHeight * 0.1,
             decoration: BoxDecoration(
-              color: Colors.grey,
+              color: AppColors.skeletonContainer,
               borderRadius: BorderRadius.circular(screenWidth * 0.035),
             ),
           ),
-          SizedBox(height: screenWidth * 0.06),
+          SizedBox(height: screenHeight * 0.024),
+          Wrap(
+            spacing: screenWidth * 0.012,
+            runSpacing: screenWidth * 0.012,
+            children: List.generate(6, (index) {
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: screenWidth * 0.05,
+                    height: screenWidth * 0.05,
+                    decoration: BoxDecoration(
+                      color: AppColors.skeletonContainer,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  SizedBox(width: screenWidth * 0.01),
+                  Container(
+                    width: ((screenWidth - 2 * screenWidth * 0.04 - screenWidth * 0.024) / 2) -
+                        (screenWidth * 0.05 + screenWidth * 0.01),
+                    height: screenHeight * 0.03,
+                    decoration: BoxDecoration(
+                      color: AppColors.skeletonContainer,
+                      borderRadius: BorderRadius.circular(screenWidth * 0.02),
+                    ),
+                  ),
+                ],
+              );
+            }),
+          ),
+          SizedBox(height: screenHeight * 0.027),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(4, (index) {
+              return Container(
+                margin: EdgeInsets.symmetric(horizontal: screenWidth * 0.004),
+                width: screenWidth * 0.032,
+                height: screenWidth * 0.032,
+                decoration: BoxDecoration(
+                  color: AppColors.skeletonContainer,
+                  shape: BoxShape.circle,
+                ),
+              );
+            }),
+          ),
+          SizedBox(height: screenHeight * 0.01),
+          Container(
+            width: screenWidth * 0.7,
+            height: screenHeight * 0.07,
+            decoration: BoxDecoration(
+              color: AppColors.skeletonContainer,
+              borderRadius: BorderRadius.circular(screenWidth * 0.075),
+            ),
+          ),
+          SizedBox(height: screenHeight * 0.015),
+          Column(
+            children: List.generate(5, (index) {
+              return Padding(
+                padding: EdgeInsets.symmetric(vertical: screenHeight * 0.0012),
+                child: Container(
+                  width: index == 4 ? screenWidth * 0.6 : screenWidth * 0.9,
+                  height: screenHeight * 0.014,
+                  decoration: BoxDecoration(
+                    color: AppColors.skeletonContainer,
+                    borderRadius: BorderRadius.circular(screenWidth * 0.02),
+                  ),
+                ),
+              );
+            }),
+          ),
         ],
       ),
     );
   }
 
-  ///------------------------------------------------------------------
-  /// _buildPremiumContent
-  ///------------------------------------------------------------------
   Widget _buildPremiumContent(
       BuildContext context,
       AppLocalizations localizations,
-      bool isDarkTheme,
       ) {
     final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+    bool disablePurchaseButton = (_currentPage != 0 &&
+        (_hasCortexSubscription == 4 ||
+            _hasCortexSubscription == 5 ||
+            _hasCortexSubscription == 6));
 
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.symmetric(
           horizontal: screenWidth * 0.04,
-          vertical: screenWidth * 0.03,
+          vertical: screenHeight * 0.03,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.center,
@@ -742,169 +782,219 @@ class _PremiumScreenState extends State<PremiumScreen>
               child: IconButton(
                 icon: Icon(
                   Icons.close,
-                  color: isDarkTheme ? Colors.white : Colors.black,
+                  color: AppColors.opposedPrimaryColor,
                   size: screenWidth * 0.07,
                 ),
                 onPressed: () => Navigator.of(context).pop(),
               ),
             ),
-            SizedBox(height: screenWidth * 0.01),
+            SizedBox(height: screenHeight * 0.01),
             Expanded(
-              child: _hasCortexSubscription > 0
-                  ? _buildSubscribedContent(context, localizations, isDarkTheme)
-                  : Column(
-                children: [
-                  Expanded(
-                    child: PageView(
-                      controller: _pageController,
-                      children: [
-                        // Kredi Paketi Sayfası
-                        CreditContentWidget(
-                          onCreditPackageSelected: (CreditPackage package) {
-                            setState(() {
-                              _selectedCreditPackage = package;
-                              _currentPage = -1; // Özel bir değer ile kredi sayfasında olduğunu belirtin
-                            });
-                          },
-                        ),
-
-                        // Abonelik Planları
-                        _buildPremiumPage(
-                          context: context,
-                          localizations: localizations,
-                          isDarkTheme: isDarkTheme,
-                          planType: 'plus',
-                        ),
-                        _buildPremiumPage(
-                          context: context,
-                          localizations: localizations,
-                          isDarkTheme: isDarkTheme,
-                          planType: 'pro',
-                        ),
-                        _buildPremiumPage(
-                          context: context,
-                          localizations: localizations,
-                          isDarkTheme: isDarkTheme,
-                          planType: 'ultra',
-                        ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(height: screenWidth * 0.035),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(planTypes.length, (index) {
-                      return AnimatedContainer(
-                        duration: const Duration(milliseconds: 300),
-                        margin: EdgeInsets.symmetric(
-                            horizontal: screenWidth * 0.01),
-                        width: _currentPage == index
-                            ? screenWidth * 0.03
-                            : screenWidth * 0.02,
-                        height: screenWidth * 0.03,
-                        decoration: BoxDecoration(
-                          color: _currentPage == index
-                              ? (isDarkTheme ? Colors.white : Colors.black)
-                              : Colors.grey,
-                          shape: BoxShape.circle,
-                        ),
-                      );
-                    }),
-                  ),
-                  SizedBox(height: screenWidth * 0.02),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.help_outline,
-                        size: screenWidth * 0.04,
-                        color: Colors.grey,
-                      ),
-                      SizedBox(width: screenWidth * 0.01),
-                      Text(
-                        localizations.comingSoon,
-                        style: TextStyle(
-                          fontSize: screenWidth * 0.03,
-                          color: Colors.grey,
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: screenWidth * 0.02),
-                  ElevatedButton(
-                    onPressed: (_subscriptions.isNotEmpty || _selectedCreditPackage != null)
-                        ? () {
-                      if (_selectedCreditPackage != null) {
-                        _buyCreditPackage(_selectedCreditPackage!.productId);
-                      } else {
-                        String currentPlanType = planTypes[_currentPage];
-                        _buySubscription(currentPlanType);
+              child: PageView(
+                controller: _pageController,
+                onPageChanged: (index) {
+                  setState(() {
+                    _currentPage = index;
+                    if (index != 0) {
+                      String currentPlan = planTypes[index - 1];
+                      if ((_hasCortexSubscription == 1 && currentPlan == 'plus') ||
+                          (_hasCortexSubscription == 2 && currentPlan == 'pro') ||
+                          (_hasCortexSubscription == 3 && currentPlan == 'ultra')) {
+                        if (_activeSubscriptionOption == 'annual') {
+                          selectedOptions[currentPlan] = 'annual';
+                        }
                       }
+                    } else {
+                      _selectedCreditPackage = _creditKey.currentState?._creditPackages.isNotEmpty == true
+                          ? _creditKey.currentState!._creditPackages[0]
+                          : null;
                     }
-                        : null,
-                    style: ElevatedButton.styleFrom(
-                      foregroundColor: isDarkTheme ? Colors.black : Colors.white,
-                      backgroundColor: isDarkTheme ? Colors.white : Colors.black,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(screenWidth * 0.075),
-                      ),
-                      padding: EdgeInsets.symmetric(
-                        vertical: screenWidth * 0.05,
-                        horizontal: screenWidth * 0.125,
-                      ),
-                    ),
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 200),
-                      transitionBuilder: (child, animation) {
-                        return FadeTransition(
-                          child: child,
-                          opacity: animation,
-                        );
-                      },
-                      child: _selectedCreditPackage != null
-                          ? Text(
-                        '${_selectedCreditPackage!.credits} Al',
-                        key: ValueKey<String>('credit-${_selectedCreditPackage!.productId}'),
-                        style: TextStyle(
-                          fontSize: screenWidth * 0.04,
-                          fontWeight: FontWeight.bold,
-                          color: isDarkTheme ? Colors.black : Colors.white,
-                        ),
-                      )
-                          : Text(
-                        selectedOptions[planTypes[_currentPage]] == 'annual'
-                            ? localizations.startFreeTrial30Days
-                            : localizations.startFreeTrial7Days,
-                        key: ValueKey<String>(
-                          '${selectedOptions[planTypes[_currentPage]]}-${planTypes[_currentPage]}',
-                        ),
-                        style: TextStyle(
-                          fontSize: screenWidth * 0.04,
-                          fontWeight: FontWeight.bold,
-                          color: isDarkTheme ? Colors.black : Colors.white,
-                        ),
-                      ),
-                    ),
+                  });
+                },
+                children: [
+                  CreditContentWidget(
+                    key: _creditKey,
+                    onCreditPackageSelected: (CreditPackage package) {
+                      setState(() {
+                        _selectedCreditPackage = package;
+                      });
+                    },
                   ),
-                  SizedBox(height: screenWidth * 0.025),
-                  TextButton(
-                    onPressed: () => _showTermsAndConditions(context),
-                    style: TextButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(
-                            screenWidth * 0.03),
-                      ),
-                    ),
-                    child: Text(
-                      localizations.termsOfServiceAndPrivacyPolicyWarning,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: Colors.grey[600],
-                        fontSize: screenWidth * 0.025,
-                      ),
-                    ),
+                  _buildPremiumPage(
+                    context: context,
+                    localizations: localizations,
+                    planType: 'plus',
+                  ),
+                  _buildPremiumPage(
+                    context: context,
+                    localizations: localizations,
+                    planType: 'pro',
+                  ),
+                  _buildPremiumPage(
+                    context: context,
+                    localizations: localizations,
+                    planType: 'ultra',
                   ),
                 ],
+              ),
+            ),
+            SizedBox(height: screenHeight * 0.035),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(4, (index) {
+                return AnimatedContainer(
+                  duration: const Duration(milliseconds: 300),
+                  margin: EdgeInsets.symmetric(horizontal: screenWidth * 0.01),
+                  width: _currentPage == index ? screenWidth * 0.03 : screenWidth * 0.02,
+                  height: screenWidth * 0.03,
+                  decoration: BoxDecoration(
+                    color: _currentPage == index ? AppColors.opposedPrimaryColor : AppColors.disabled,
+                    shape: BoxShape.circle,
+                  ),
+                );
+              }),
+            ),
+            SizedBox(height: screenHeight * 0.01),
+            AnimatedOpacity(
+              duration: const Duration(milliseconds: 500),
+              opacity: (_currentPage == 0) ? 1.0 : (disablePurchaseButton ? 0.5 : 1.0),
+              child: ElevatedButton(
+                onPressed: disablePurchaseButton
+                    ? null
+                    : () {
+                  if (_currentPage == 0) {
+                    if (_selectedCreditPackage != null) {
+                      _creditKey.currentState?.buyCreditPackage(_selectedCreditPackage!.productId);
+                    }
+                  } else {
+                    int planIndex = _currentPage - 1;
+                    String currentPlan = planTypes[planIndex];
+                    if (_hasCortexSubscription == 0) {
+                      _buySubscription(currentPlan);
+                    } else {
+                      if (_hasCortexSubscription == planIndex + 1) {
+                        if (selectedOptions[currentPlan] == _activeSubscriptionOption) {
+                          _cancelSubscription();
+                        } else {
+                          _buySubscription(currentPlan);
+                        }
+                      } else {
+                        _buySubscription(currentPlan);
+                      }
+                    }
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  foregroundColor: AppColors.primaryColor,
+                  backgroundColor: AppColors.opposedPrimaryColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(screenWidth * 0.075),
+                  ),
+                  padding: EdgeInsets.symmetric(
+                    vertical: screenHeight * 0.02,
+                    horizontal: screenWidth * 0.125,
+                  ),
+                ),
+                child: AnimatedSize(
+                  duration: const Duration(milliseconds: 200),
+                  curve: Curves.easeInOut,
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 200),
+                    switchInCurve: Curves.easeInOut,
+                    switchOutCurve: Curves.easeInOut,
+                    layoutBuilder: (currentChild, previousChildren) {
+                      return Stack(
+                        alignment: Alignment.center,
+                        children: <Widget>[
+                          ...previousChildren,
+                          if (currentChild != null) currentChild,
+                        ],
+                      );
+                    },
+                    transitionBuilder: (child, animation) =>
+                        FadeTransition(opacity: animation, child: child),
+                    child: _currentPage == 0
+                        ? Text(
+                      _selectedCreditPackage != null
+                          ? localizations.creditPackage(_selectedCreditPackage!.amount)
+                          : localizations.buyCredit,
+                      key: const ValueKey('credit'),
+                      style: TextStyle(
+                        fontSize: screenWidth * 0.04,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primaryColor,
+                      ),
+                    )
+                        : () {
+                      int planIndex = _currentPage - 1;
+                      String currentPlan = planTypes[planIndex];
+                      if (_hasCortexSubscription == 0) {
+                        return Text(
+                          selectedOptions[currentPlan] == 'annual'
+                              ? localizations.startFreeTrial30Days
+                              : localizations.startFreeTrial7Days,
+                          key: ValueKey('${selectedOptions[currentPlan]}-$currentPlan'),
+                          style: TextStyle(
+                            fontSize: screenWidth * 0.04,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primaryColor,
+                          ),
+                        );
+                      } else {
+                        if (_hasCortexSubscription == planIndex + 1) {
+                          if (selectedOptions[currentPlan] == _activeSubscriptionOption) {
+                            return Text(
+                              localizations.cancelSubscription,
+                              key: ValueKey('cancel-$currentPlan'),
+                              style: TextStyle(
+                                fontSize: screenWidth * 0.04,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.primaryColor,
+                              ),
+                            );
+                          } else {
+                            return Text(
+                              localizations.upgradeSubscription,
+                              key: ValueKey('upgrade-$currentPlan'),
+                              style: TextStyle(
+                                fontSize: screenWidth * 0.04,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.primaryColor,
+                              ),
+                            );
+                          }
+                        } else {
+                          return Text(
+                            localizations.upgradeSubscription,
+                            key: ValueKey('upgrade-$currentPlan'),
+                            style: TextStyle(
+                              fontSize: screenWidth * 0.04,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.primaryColor,
+                            ),
+                          );
+                        }
+                      }
+                    }(),
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(height: screenHeight * 0.01),
+            TextButton(
+              onPressed: () => _showTermsAndConditions(context),
+              style: TextButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(screenWidth * 0.03),
+                ),
+              ),
+              child: Text(
+                localizations.termsOfServiceAndPrivacyPolicyWarning,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: AppColors.tertiaryColor,
+                  fontSize: screenWidth * 0.024,
+                ),
               ),
             ),
           ],
@@ -913,104 +1003,87 @@ class _PremiumScreenState extends State<PremiumScreen>
     );
   }
 
-  ///------------------------------------------------------------------
-  /// Kredi satın almayı başlatan fonksiyon (Satır 4)
-  ///------------------------------------------------------------------
-  void _buyCreditPackage(String productId) {
-    // Abonelik ürünleri gibi, bu da _subscriptions listesinde olmalı.
-    // Aksi hâlde orElse ile bir Exception atabilirsiniz.
-    final product = _subscriptions.firstWhere(
-          (p) => p.id == productId,
-      orElse: () => throw Exception('Kredi ürünü bulunamadı.'),
-    );
-
-    if (_isTesting) {
-      // Test modunda mock satın alma
-      _deliverProduct(
-        PurchaseDetails(
-          purchaseID: 'mock_purchase_id',
-          productID: product.id,
-          status: PurchaseStatus.purchased,
-          transactionDate: DateTime.now().toIso8601String(),
-          verificationData: PurchaseVerificationData(
-            localVerificationData: 'mock_verification',
-            serverVerificationData: 'mock_server_verification',
-            source: 'mock_source',
-          ),
-        ),
-      );
-    } else {
-      final purchaseParam = PurchaseParam(productDetails: product);
-      _inAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
-    }
-  }
-
-  ///------------------------------------------------------------------
-  /// _buildPremiumPage (plus/pro/ultra)
-  ///------------------------------------------------------------------
   Widget _buildPremiumPage({
     required BuildContext context,
     required AppLocalizations localizations,
-    required bool isDarkTheme,
     required String planType,
   }) {
     final screenWidth = MediaQuery.of(context).size.width;
-
+    final screenHeight = MediaQuery.of(context).size.height;
     String purchaseKey;
     String descriptionKey;
     bool isBestValue;
     String logoPath;
 
+    bool globalDisabled = (_hasCortexSubscription == 4 ||
+        _hasCortexSubscription == 5 ||
+        _hasCortexSubscription == 6);
+
+    bool isActivePlan = false;
+    if (planType == 'plus') {
+      if (_hasCortexSubscription == 1 || _hasCortexSubscription == 4) {
+        isActivePlan = true;
+      }
+    } else if (planType == 'pro') {
+      if (_hasCortexSubscription == 2 || _hasCortexSubscription == 5) {
+        isActivePlan = true;
+      }
+    } else if (planType == 'ultra') {
+      if (_hasCortexSubscription == 3 || _hasCortexSubscription == 6) {
+        isActivePlan = true;
+      }
+    }
+
     if (planType == 'pro') {
       purchaseKey = localizations.purchasePro;
       descriptionKey = localizations.proDescription;
-      isBestValue = _hasCortexSubscription < 2;
-      logoPath = isDarkTheme ? 'assets/whitepro.png' : 'assets/prologo.png';
+      isBestValue = !globalDisabled;
+      logoPath = AppColors.currentTheme == 'dark' ? 'assets/whitepro.png' : 'assets/prologo.png';
     } else if (planType == 'ultra') {
       purchaseKey = localizations.purchaseUltra;
       descriptionKey = localizations.ultraDescription;
-      isBestValue = _hasCortexSubscription < 3;
-      logoPath = isDarkTheme ? 'assets/whiteultra.png' : 'assets/ultralogo.png';
+      isBestValue = !globalDisabled;
+      logoPath = AppColors.currentTheme == 'dark' ? 'assets/whiteultra.png' : 'assets/ultralogo.png';
     } else {
-      // plus
       purchaseKey = localizations.purchasePlus;
       descriptionKey = localizations.plusDescription;
-      isBestValue = _hasCortexSubscription < 1;
-      logoPath = isDarkTheme ? 'assets/whiteplus.png' : 'assets/pluslogo.png';
+      isBestValue = !globalDisabled;
+      logoPath = AppColors.currentTheme == 'dark' ? 'assets/whiteplus.png' : 'assets/pluslogo.png';
     }
+
+    Widget header = Text(
+      purchaseKey,
+      style: TextStyle(
+        fontSize: screenWidth * 0.07,
+        fontWeight: FontWeight.bold,
+        color: AppColors.opposedPrimaryColor,
+      ),
+      textAlign: TextAlign.center,
+    );
 
     return SingleChildScrollView(
       child: Column(
         children: [
-          Text(
-            purchaseKey,
-            style: TextStyle(
-              fontSize: screenWidth * 0.07,
-              fontWeight: FontWeight.bold,
-              color: isDarkTheme ? Colors.white : Colors.black,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: screenWidth * 0.025),
+          header,
+          SizedBox(height: screenHeight * 0.01),
           Text(
             descriptionKey,
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: screenWidth * 0.035,
-              color: isDarkTheme ? Colors.grey[400] : Colors.grey[600],
+              color: AppColors.tertiaryColor,
             ),
           ),
-          SizedBox(height: screenWidth * 0.05),
+          SizedBox(height: screenHeight * 0.01),
           Image.asset(
             logoPath,
             height: screenWidth * 0.25,
           ),
-          SizedBox(height: screenWidth * 0.05),
-
-          /// Yıllık abonelik seçeneği
+          SizedBox(height: screenHeight * 0.01),
           _buildSubscriptionOption(
             context: context,
             localizations: localizations,
+            option: 'annual',
             title: planType == 'pro'
                 ? localizations.annualPro
                 : planType == 'ultra'
@@ -1022,18 +1095,19 @@ class _PremiumScreenState extends State<PremiumScreen>
                 ? '${localizations.annualUltraDescription} ${_getPriceForId(_annualSubscriptionUltra)}'
                 : '${localizations.annualPlusDescription} ${_getPriceForId(_annualSubscriptionPlus)}',
             isBestValue: isBestValue,
-            isDarkTheme: isDarkTheme,
             isSelected: selectedOptions[planType] == 'annual',
+            isSubscribedPlan: isActivePlan,
+            activeSubscriptionOption: _activeSubscriptionOption ?? '',
+            globalDisabled: globalDisabled,
             onSelect: () => setState(() {
-              selectedOptions[planType] = 'annual';
+              if (!globalDisabled) selectedOptions[planType] = 'annual';
             }),
           ),
-          SizedBox(height: screenWidth * 0.03),
-
-          /// Aylık abonelik seçeneği
+          SizedBox(height: screenHeight * 0.01),
           _buildSubscriptionOption(
             context: context,
             localizations: localizations,
+            option: 'monthly',
             title: planType == 'pro'
                 ? localizations.monthlyPro
                 : planType == 'ultra'
@@ -1045,16 +1119,16 @@ class _PremiumScreenState extends State<PremiumScreen>
                 ? '${localizations.monthlyUltraDescription} ${_getPriceForId(_monthlySubscriptionUltra)}'
                 : '${localizations.monthlyPlusDescription} ${_getPriceForId(_monthlySubscriptionPlus)}',
             isBestValue: false,
-            isDarkTheme: isDarkTheme,
             isSelected: selectedOptions[planType] == 'monthly',
+            isSubscribedPlan: isActivePlan,
+            activeSubscriptionOption: _activeSubscriptionOption ?? '',
+            globalDisabled: globalDisabled,
             onSelect: () => setState(() {
-              selectedOptions[planType] = 'monthly';
+              if (!globalDisabled) selectedOptions[planType] = 'monthly';
             }),
           ),
-          SizedBox(height: screenWidth * 0.06),
-
-          // Avantaj listesi
-          _buildBenefitsList(localizations, isDarkTheme, planType),
+          SizedBox(height: screenHeight * 0.02),
+          _buildBenefitsList(context, localizations, planType),
         ],
       ),
     );
@@ -1063,77 +1137,143 @@ class _PremiumScreenState extends State<PremiumScreen>
   Widget _buildSubscriptionOption({
     required BuildContext context,
     required AppLocalizations localizations,
+    required String option,
     required String title,
     required String description,
     bool isBestValue = false,
-    required bool isDarkTheme,
     required bool isSelected,
+    required bool isSubscribedPlan,
+    required String activeSubscriptionOption,
+    required bool globalDisabled,
     required VoidCallback onSelect,
   }) {
     final screenWidth = MediaQuery.of(context).size.width;
+    final titleFontSize = screenWidth * 0.045;
+    final descriptionFontSize = screenWidth * 0.04;
 
-    final cardWidth = min(screenWidth * 0.9, 350.0);
+    double finalOpacity = 1.0;
+    if (globalDisabled) {
+      finalOpacity = 0.5;
+    } else if (isSubscribedPlan &&
+        activeSubscriptionOption == 'annual' &&
+        option == 'monthly') {
+      finalOpacity = 0.3; // Yıllık aboneyse aylık seçeneğini soldur
+    }
 
-    // Metin boyutlarını ekran genişliğine göre dinamik olarak ayarlayın
-    final titleFontSize = screenWidth > 600 ? 20.0 : 18.0;
-    final descriptionFontSize = screenWidth > 600 ? 16.0 : 14.0;
+    final bool showCheck = globalDisabled
+        ? true
+        : (isSubscribedPlan && (activeSubscriptionOption == option));
 
-    return Center(
+    // Aylık planın tıklanabilirliği (yıllık abone olmuşsa kapalı)
+    bool disabled = globalDisabled ||
+        (isSubscribedPlan &&
+            activeSubscriptionOption == 'annual' &&
+            option == 'monthly');
+
+    return AnimatedOpacity(
+      duration: const Duration(milliseconds: 500),
+      opacity: finalOpacity,
       child: GestureDetector(
-        onTap: onSelect,
+        onTap: disabled ? null : onSelect,
         child: AnimatedContainer(
-          width: cardWidth,
+          width: screenWidth * 0.9,
           duration: const Duration(milliseconds: 300),
           decoration: BoxDecoration(
-            color: isDarkTheme ? const Color(0xFF1B1B1B) : Colors.grey[200],
-            borderRadius: BorderRadius.circular(14),
-            border: isSelected
-                ? Border.all(
-              color: isDarkTheme ? Colors.white : Colors.black,
-              width: 2,
-            )
-                : Border.all(color: Colors.transparent, width: 2),
+            color: AppColors.quaternaryColor,
+            borderRadius: BorderRadius.circular(screenWidth * 0.04),
+            border: Border.all(
+              color: isSelected ? AppColors.opposedPrimaryColor : Colors.transparent,
+              width: screenWidth * 0.003,
+            ),
           ),
-          padding: const EdgeInsets.all(14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          padding: EdgeInsets.all(screenWidth * 0.035),
+          child: Stack(
             children: [
-              Row(
+              // Başlık + (En İyi Değer) + Açıklama
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
+                  // 1. Satır: Başlık ve En İyi Değer
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Başlık
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: TextStyle(
+                            fontSize: titleFontSize,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.opposedPrimaryColor,
+                          ),
+                        ),
+                      ),
+                      // "En İyi Değer" etiketi (annual + isBestValue = true)
+                      if (option == 'annual' && isBestValue)
+                        AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 500),
+                          transitionBuilder: (child, animation) => FadeTransition(
+                            opacity: animation,
+                            child: child,
+                          ),
+                          child: showCheck
+                              ? const SizedBox.shrink()
+                              : Container(
+                            key: const ValueKey('bestValueText'),
+                            padding: EdgeInsets.symmetric(
+                              vertical: screenWidth * 0.008,
+                              horizontal: screenWidth * 0.015,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.green,
+                              borderRadius: BorderRadius.circular(screenWidth * 0.012),
+                            ),
+                            child: Text(
+                              localizations.bestValue,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: screenWidth * 0.025,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  SizedBox(height: screenWidth * 0.012),
+                  // 2. Satır: Açıklama inside a FittedBox for scaling down long text
+                  FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
                     child: Text(
-                      title,
+                      description,
                       style: TextStyle(
-                        fontSize: titleFontSize,
-                        fontWeight: FontWeight.bold,
-                        color: isDarkTheme ? Colors.white : Colors.black,
+                        fontSize: descriptionFontSize,
+                        color: AppColors.opposedPrimaryColor,
                       ),
                     ),
                   ),
-                  if (isBestValue)
-                    Container(
-                      decoration: BoxDecoration(
-                        color: Colors.green,
-                        borderRadius: BorderRadius.circular(5),
-                      ),
-                      padding: const EdgeInsets.symmetric(vertical: 3, horizontal: 6),
-                      child: Text(
-                        localizations.bestValue,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
                 ],
               ),
-              const SizedBox(height: 5),
-              Text(
-                description,
-                style: TextStyle(
-                  fontSize: descriptionFontSize,
-                  color: isDarkTheme ? Colors.white : Colors.black,
+              Positioned(
+                bottom: screenWidth * 0.05,
+                right: screenWidth * 0,
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 300),
+                  transitionBuilder: (child, animation) => FadeTransition(
+                    opacity: animation,
+                    child: child,
+                  ),
+                  child: showCheck
+                      ? SvgPicture.asset(
+                    'assets/checkmark.svg',
+                    key: const ValueKey('checkIcon'),
+                    color: Colors.green,
+                    width: screenWidth * 0.09,
+                    height: screenWidth * 0.09,
+                  )
+                      : const SizedBox.shrink(),
                 ),
               ),
             ],
@@ -1143,13 +1283,10 @@ class _PremiumScreenState extends State<PremiumScreen>
     );
   }
 
-  ///------------------------------------------------------------------
-  /// _buildBenefitsList
-  ///------------------------------------------------------------------
   Widget _buildBenefitsList(
+      BuildContext context,
       AppLocalizations localizations,
-      bool isDarkTheme,
-      String planType
+      String planType,
       ) {
     List<String> benefits = [];
     if (planType == 'plus') {
@@ -1191,8 +1328,7 @@ class _PremiumScreenState extends State<PremiumScreen>
         IconData iconData = questionMarkBenefits.contains(benefit)
             ? Icons.help_outline
             : Icons.check;
-        Color iconColor =
-        questionMarkBenefits.contains(benefit) ? Colors.yellow : Colors.green;
+        Color iconColor = questionMarkBenefits.contains(benefit) ? Colors.yellow : Colors.green;
 
         return SizedBox(
           width: (screenWidth - 2 * screenWidth * 0.04 - screenWidth * 0.024) / 2,
@@ -1209,7 +1345,7 @@ class _PremiumScreenState extends State<PremiumScreen>
                   benefit,
                   style: TextStyle(
                     fontSize: screenWidth * 0.035,
-                    color: isDarkTheme ? Colors.white : Colors.black,
+                    color: AppColors.opposedPrimaryColor,
                   ),
                 ),
               ),
@@ -1221,146 +1357,35 @@ class _PremiumScreenState extends State<PremiumScreen>
   }
 
   ///------------------------------------------------------------------
-  /// _buildSubscribedContent
-  ///------------------------------------------------------------------
-  Widget _buildSubscribedContent(
-      BuildContext context,
-      AppLocalizations localizations,
-      bool isDarkTheme
-      ) {
-    final screenWidth = MediaQuery.of(context).size.width;
-
-    String subscriptionMessage;
-    String subscriptionDetailMessage;
-
-    // Burada _hasCortexSubscription == 4 (yeni plan) vb. eklenebilir
-    if (_hasCortexSubscription == 3) {
-      subscriptionMessage = localizations.alreadySubscribed;
-      subscriptionDetailMessage = localizations.alreadySubscribed;
-    } else if (_hasCortexSubscription == 2) {
-      subscriptionMessage = localizations.alreadySubscribed;
-      subscriptionDetailMessage = localizations.alreadySubscribed;
-    } else if (_hasCortexSubscription == 1) {
-      subscriptionMessage = localizations.alreadySubscribedPlus;
-      subscriptionDetailMessage = localizations.alreadySubscribed;
-    } else {
-      subscriptionMessage = localizations.noSubscription;
-      subscriptionDetailMessage = localizations.noSubscriptionMessage;
-    }
-
-    IconData iconData;
-    Color iconColor;
-    if (_hasCortexSubscription > 0) {
-      iconData = Icons.check_circle_outline;
-      iconColor = Colors.green;
-    } else {
-      iconData = Icons.info_outline;
-      iconColor = Colors.orange;
-    }
-
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Text(
-            subscriptionMessage,
-            style: TextStyle(
-              fontSize: screenWidth * 0.06,
-              fontWeight: FontWeight.bold,
-              color: isDarkTheme ? Colors.white : Colors.black,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: screenWidth * 0.05),
-          Icon(
-            iconData,
-            color: iconColor,
-            size: screenWidth * 0.25,
-          ),
-          SizedBox(height: screenWidth * 0.05),
-          Container(
-            constraints: BoxConstraints(
-              maxWidth: screenWidth * 0.9,
-            ),
-            child: Text(
-              subscriptionDetailMessage,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: screenWidth * 0.04,
-                color: isDarkTheme ? Colors.white : Colors.black,
-              ),
-            ),
-          ),
-          SizedBox(height: screenWidth * 0.075),
-          ElevatedButton(
-            onPressed: _hasCortexSubscription < 4
-                ? () {
-              String currentPlanType;
-              if (_hasCortexSubscription == 1) {
-                currentPlanType = 'plus';
-              } else if (_hasCortexSubscription == 2) {
-                currentPlanType = 'pro';
-              } else if (_hasCortexSubscription == 3) {
-                currentPlanType = 'ultra';
-              } else {
-                currentPlanType = 'new';
-              }
-              _upgradeSubscription(currentPlanType);
-            }
-                : null,
-            style: ElevatedButton.styleFrom(
-              foregroundColor: isDarkTheme ? Colors.black : Colors.white,
-              backgroundColor: isDarkTheme ? Colors.white : Colors.black,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(screenWidth * 0.075),
-              ),
-              padding: EdgeInsets.symmetric(
-                vertical: screenWidth * 0.04,
-                horizontal: screenWidth * 0.125,
-              ),
-            ),
-            child: Text(
-              localizations.upgradeSubscription,
-              style: TextStyle(
-                fontSize: screenWidth * 0.04,
-                fontWeight: FontWeight.bold,
-                color: isDarkTheme ? Colors.black : Colors.white,
-              ),
-            ),
-          ),
-          SizedBox(height: screenWidth * 0.035),
-          TextButton(
-            onPressed: _cancelSubscription,
-            style: TextButton.styleFrom(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(screenWidth * 0.03),
-              ),
-            ),
-            child: Text(
-              localizations.cancelSubscription,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.red,
-                fontSize: screenWidth * 0.035,
-                decoration: TextDecoration.underline,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  ///------------------------------------------------------------------
   /// _cancelSubscription
   ///------------------------------------------------------------------
   void _cancelSubscription() async {
+    User? user = _auth.currentUser;
+    if (_isTesting) {
+      // Test modunda iptal edildiğinde abonelik sıfırlansın.
+      setState(() {
+        _hasCortexSubscription = 0;
+        _activeSubscriptionOption = null;
+      });
+      if (user != null) {
+        await FirebaseFirestore.instance.collection('users').doc(user.uid).update({
+          'hasCortexSubscription': 0,
+          'activeSubscriptionOption': null,
+        });
+      }
+      _showCustomNotification(
+        message: "Subscription cancelled (test mode).",
+        isSuccess: true,
+      );
+      return;
+    }
+
+    // Üretim modunda, iptal işlemi için kullanıcı mağaza abonelik yönetimine yönlendirilir.
     Uri url;
     final platform = Theme.of(context).platform;
-
     if (platform == TargetPlatform.android) {
       url = Uri.parse(
-          'https://play.google.com/store/account/subscriptions?package=com.vertex.cortex'
+        'https://play.google.com/store/account/subscriptions?package=com.vertex.cortex',
       );
     } else if (platform == TargetPlatform.iOS) {
       url = Uri.parse('https://apps.apple.com/account/subscriptions');
@@ -1399,8 +1424,6 @@ class _PremiumScreenState extends State<PremiumScreen>
       newPlanType = 'pro';
     } else if (currentPlanType == 'pro') {
       newPlanType = 'ultra';
-    } else if (currentPlanType == 'ultra') {
-      newPlanType = 'new';
     } else {
       setState(() {
         _errorOccurred = true;
@@ -1417,19 +1440,17 @@ class _PremiumScreenState extends State<PremiumScreen>
       context: context,
       builder: (context) {
         final localizations = AppLocalizations.of(context)!;
-        final isDarkTheme =
-            Provider.of<ThemeProvider>(context, listen: false).isDarkTheme;
         final screenWidth = MediaQuery.of(context).size.width;
 
         return AlertDialog(
-          backgroundColor: isDarkTheme ? const Color(0xFF1B1B1B) : Colors.white,
+          backgroundColor: AppColors.secondaryColor,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(screenWidth * 0.04),
           ),
           title: Text(
             localizations.upgradeSubscription,
             style: TextStyle(
-              color: isDarkTheme ? Colors.white : Colors.black,
+              color: AppColors.opposedPrimaryColor,
               fontSize: screenWidth * 0.05,
               fontWeight: FontWeight.bold,
             ),
@@ -1437,7 +1458,7 @@ class _PremiumScreenState extends State<PremiumScreen>
           content: Text(
             localizations.confirmUpgrade,
             style: TextStyle(
-              color: isDarkTheme ? Colors.white : Colors.black,
+              color: AppColors.opposedPrimaryColor,
               fontSize: screenWidth * 0.04,
             ),
           ),
@@ -1455,7 +1476,7 @@ class _PremiumScreenState extends State<PremiumScreen>
             ElevatedButton(
               onPressed: () => Navigator.of(context).pop(true),
               style: ElevatedButton.styleFrom(
-                backgroundColor: isDarkTheme ? Colors.white : Colors.black,
+                backgroundColor: AppColors.opposedPrimaryColor,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(screenWidth * 0.03),
                 ),
@@ -1467,7 +1488,7 @@ class _PremiumScreenState extends State<PremiumScreen>
               child: Text(
                 localizations.confirm,
                 style: TextStyle(
-                  color: isDarkTheme ? Colors.black : Colors.white,
+                  color: AppColors.primaryColor,
                   fontSize: screenWidth * 0.04,
                   fontWeight: FontWeight.bold,
                 ),
@@ -1485,27 +1506,21 @@ class _PremiumScreenState extends State<PremiumScreen>
     _buySubscription(newPlanType);
   }
 
-  ///------------------------------------------------------------------
-  /// _showTermsAndConditions
-  ///------------------------------------------------------------------
   void _showTermsAndConditions(BuildContext context) {
     final localizations = AppLocalizations.of(context)!;
-    final isDarkTheme = Provider.of<ThemeProvider>(context, listen: false).isDarkTheme;
     final screenWidth = MediaQuery.of(context).size.width;
-    final backgroundColor = isDarkTheme ? const Color(0xFF090909) : Colors.white;
-    final textColor = isDarkTheme ? Colors.white : Colors.black;
-
+    final screenHeight = MediaQuery.of(context).size.height;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: backgroundColor,
+      backgroundColor: AppColors.background,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(screenWidth * 0.05)),
       ),
       builder: (BuildContext context) {
         return ConstrainedBox(
           constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.6,
+            maxHeight: screenHeight * 0.6,
           ),
           child: Padding(
             padding: EdgeInsets.all(screenWidth * 0.04),
@@ -1516,32 +1531,38 @@ class _PremiumScreenState extends State<PremiumScreen>
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      localizations.termsOfServiceAndPrivacyPolicyTitle,
-                      style: TextStyle(
-                        fontSize: screenWidth * 0.05,
-                        fontWeight: FontWeight.bold,
-                        color: textColor,
+                    Expanded(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          localizations.termsOfServiceAndPrivacyPolicyTitle,
+                          style: TextStyle(
+                            fontSize: screenWidth * 0.05,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.opposedPrimaryColor,
+                          ),
+                        ),
                       ),
                     ),
                     IconButton(
                       icon: Icon(
                         Icons.close,
-                        color: textColor.withOpacity(0.6),
+                        color: AppColors.opposedPrimaryColor.withOpacity(0.6),
                         size: screenWidth * 0.06,
                       ),
                       onPressed: () => Navigator.of(context).pop(),
                     ),
                   ],
                 ),
-                SizedBox(height: screenWidth * 0.02),
+                SizedBox(height: screenHeight * 0.02),
                 Expanded(
                   child: SingleChildScrollView(
                     child: Text(
                       localizations.termsOfServiceAndPrivacyPolicyContent,
                       style: TextStyle(
                         fontSize: screenWidth * 0.035,
-                        color: textColor,
+                        color: AppColors.opposedPrimaryColor,
                       ),
                     ),
                   ),
@@ -1609,11 +1630,11 @@ class _CreditContentWidgetState extends State<CreditContentWidget> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
 
   /// Ürün ID'leri (kredi paketleri)
-  static const String _productId100 = 'credit_100';
-  static const String _productId500 = 'credit_500';
-  static const String _productId1000 = 'credit_1000';
-  static const String _productId2500 = 'credit_2500';
-  static const String _productId5000 = 'credit_5000';
+  static const String _productId100 = 'credits_100';
+  static const String _productId500 = 'credits_500';
+  static const String _productId1000 = 'credits_1000';
+  static const String _productId2500 = 'credits_2500';
+  static const String _productId5000 = 'credits_5000';
 
   /// Sorgulanan ürünler
   List<ProductDetails> _availableProducts = [];
@@ -1623,17 +1644,21 @@ class _CreditContentWidgetState extends State<CreditContentWidget> {
   bool _errorOccurred = false;
   String _errorMessage = '';
 
-  bool _isTesting = true;
+  bool _isTesting = !kReleaseMode;
 
-  /// Kullanıcının mevcut kredisi
-  int _currentCredits = 0;
 
   @override
   void initState() {
     super.initState();
     _initializeCreditPackages();
+    _selectedCardIndex = 0;
+    // Varsayılan seçimi parent'a bildiriyoruz
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (widget.onCreditPackageSelected != null && _creditPackages.isNotEmpty) {
+        widget.onCreditPackageSelected!(_creditPackages[0]);
+      }
+    });
 
-    // Kendi purchase stream dinleyicimiz
     _localSubscription = _localInAppPurchase.purchaseStream.listen(
       _onPurchaseUpdated,
       onError: (error) {
@@ -1659,32 +1684,14 @@ class _CreditContentWidgetState extends State<CreditContentWidget> {
 
   void _initializeCreditPackages() {
     _creditPackages = [
-      CreditPackage(
-        credits: '100 Kredi',
-        productId: _productId100,
-        price: '\$0.99',
-      ),
-      CreditPackage(
-        credits: '500 Kredi',
-        productId: _productId500,
-        price: '\$4.99',
-      ),
-      CreditPackage(
-        credits: '1000 Kredi',
-        productId: _productId1000,
-        price: '\$9.99',
-      ),
-      CreditPackage(
-        credits: '2500 Kredi',
-        productId: _productId2500,
-        price: '\$24.99',
-      ),
+      CreditPackage(amount: 100, productId: _productId100, price: '\$0.99'),
+      CreditPackage(amount: 500, productId: _productId500, price: '\$4.99'),
+      CreditPackage(amount: 1000, productId: _productId1000, price: '\$9.99'),
+      CreditPackage(amount: 2500, productId: _productId2500, price: '\$24.99'),
+      CreditPackage(amount: 5000, productId: _productId5000, price: '\$49.99'),
     ];
   }
 
-  ///------------------------------------------------------------------
-  /// Mağaza hazırlığı (kredi paketleri)
-  ///------------------------------------------------------------------
   Future<void> _initializeStore() async {
     _isAvailable = await _localInAppPurchase.isAvailable();
     if (!_isAvailable && !_isTesting) {
@@ -1706,7 +1713,6 @@ class _CreditContentWidgetState extends State<CreditContentWidget> {
 
     if (_isAvailable) {
       final response = await _localInAppPurchase.queryProductDetails(_kIds);
-
       if (response.error != null && !_isTesting) {
         setState(() {
           _loading = false;
@@ -1715,7 +1721,6 @@ class _CreditContentWidgetState extends State<CreditContentWidget> {
         });
         return;
       }
-
       if (response.productDetails.isEmpty && !_isTesting) {
         setState(() {
           _loading = false;
@@ -1724,18 +1729,15 @@ class _CreditContentWidgetState extends State<CreditContentWidget> {
         });
         return;
       }
-
       setState(() {
         _availableProducts = response.productDetails;
         _loading = false;
       });
-    }
-    else if (_isTesting) {
-      // Test modunda mock ürünleri kullan
+    } else if (_isTesting) {
       setState(() {
         _availableProducts = _creditPackages.map((cp) => ProductDetails(
           id: cp.productId,
-          title: cp.credits,
+          title: '${cp.amount} Credits',
           description: 'Test kredileri',
           price: cp.price,
           currencyCode: 'USD',
@@ -1754,18 +1756,12 @@ class _CreditContentWidgetState extends State<CreditContentWidget> {
             .doc(user.uid)
             .get();
         if (userDoc.exists) {
-          _currentCredits = userDoc.get('currentCredits') ?? 0;
         }
-      }
-      catch (e) {
-        _currentCredits = 0;
+      } catch (e) {
       }
     }
   }
 
-  ///------------------------------------------------------------------
-  /// Satın Alma Akışı
-  ///------------------------------------------------------------------
   void _onPurchaseUpdated(List<PurchaseDetails> purchaseDetailsList) async {
     try {
       for (final purchaseDetails in purchaseDetailsList) {
@@ -1780,10 +1776,8 @@ class _CreditContentWidgetState extends State<CreditContentWidget> {
             );
           } else if (purchaseDetails.status == PurchaseStatus.purchased ||
               purchaseDetails.status == PurchaseStatus.restored) {
-            // Satın alma başarılıysa burada teslimat (deliver) işlemini yapın
             await _deliverCreditPurchase(purchaseDetails);
           }
-
           if (purchaseDetails.pendingCompletePurchase) {
             await _localInAppPurchase.completePurchase(purchaseDetails);
           }
@@ -1797,23 +1791,22 @@ class _CreditContentWidgetState extends State<CreditContentWidget> {
     }
   }
 
-  ///------------------------------------------------------------------
-  /// Kredi satın almayı başlatan fonksiyon
-  ///------------------------------------------------------------------
-  void _buyCreditPackage(String productId) {
-    // Abonelik ürünleri gibi, bu da _availableProducts listesinde olmalı.
-    // Aksi hâlde orElse ile bir Exception atabilirsiniz.
-    final product = _availableProducts.firstWhere(
-          (p) => p.id == productId,
-      orElse: () => throw Exception('Kredi ürünü bulunamadı.'),
-    );
+  /// TÜM KREDİ SATIN ALMA AKIŞINI YÖNETEN FONKSİYON
+  /// PremiumScreen'deki buton, artık bu metodu çağıracak.
+  void buyCreditPackage(String productId) {
+    ProductDetails? product;
+    try {
+      product = _availableProducts.firstWhere((p) => p.id == productId);
+    } catch (e) {
+      product = null;
+    }
 
     if (_isTesting) {
-      // Test modunda mock satın alma
+      // Test modunda; ürün bulunamazsa bile doğrudan teslimat simülasyonu yap
       _deliverCreditPurchase(
         PurchaseDetails(
           purchaseID: 'mock_purchase_id',
-          productID: product.id,
+          productID: productId,
           status: PurchaseStatus.purchased,
           transactionDate: DateTime.now().toIso8601String(),
           verificationData: PurchaseVerificationData(
@@ -1824,14 +1817,19 @@ class _CreditContentWidgetState extends State<CreditContentWidget> {
         ),
       );
     } else {
+      if (product == null) {
+        setState(() {
+          _errorOccurred = true;
+          _errorMessage = 'Kredi ürünü bulunamadı.';
+        });
+        _showCustomNotification(message: 'Kredi ürünü bulunamadı.', isSuccess: false);
+        return;
+      }
       final purchaseParam = PurchaseParam(productDetails: product);
       _localInAppPurchase.buyNonConsumable(purchaseParam: purchaseParam);
     }
   }
 
-  ///------------------------------------------------------------------
-  /// Kredi satın alındıktan sonra krediyi Firestore'a ekleyen fonksiyon
-  ///------------------------------------------------------------------
   Future<void> _deliverCreditPurchase(PurchaseDetails purchaseDetails) async {
     setState(() => _purchasePending = false);
 
@@ -1840,7 +1838,6 @@ class _CreditContentWidgetState extends State<CreditContentWidget> {
       try {
         final purchasedId = purchaseDetails.productID;
         int addedCredits = 0;
-
         switch (purchasedId) {
           case _productId100:
             addedCredits = 100;
@@ -1860,23 +1857,16 @@ class _CreditContentWidgetState extends State<CreditContentWidget> {
           default:
             throw Exception('Geçersiz ürün.');
         }
-
-        // Firestore güncelle
         await FirebaseFirestore.instance
             .collection('users')
             .doc(user.uid)
-            .update({'currentCredits': FieldValue.increment(addedCredits)});
-
-        setState(() {
-          _currentCredits += addedCredits;
-        });
+            .update({'credits': FieldValue.increment(addedCredits)});
 
         _showCustomNotification(
           message: 'Krediler başarıyla eklendi!',
           isSuccess: true,
         );
-      }
-      catch (e) {
+      } catch (e) {
         setState(() {
           _errorOccurred = true;
           _errorMessage = 'Kredi ekleme başarısız oldu.';
@@ -1889,63 +1879,134 @@ class _CreditContentWidgetState extends State<CreditContentWidget> {
     }
   }
 
-
-  ///------------------------------------------------------------------
-  /// build
-  ///------------------------------------------------------------------
-  @override
-  Widget build(BuildContext context) {
-    final isDarkTheme = Provider.of<ThemeProvider>(context).isDarkTheme;
-
-    if (_errorOccurred) {
-      return Center(
-        child: Text(
-          _errorMessage,
-          style: TextStyle(color: isDarkTheme ? Colors.white : Colors.black),
-        ),
-      );
-    }
-
-    if (_purchasePending || _loading) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    return _buildCreditContent(context, isDarkTheme);
+  void _showCustomNotification({required String message, required bool isSuccess}) {
+    final notificationService = Provider.of<NotificationService>(context, listen: false);
+    notificationService.showNotification(message: message, isSuccess: isSuccess);
   }
 
-  Widget _buildCreditContent(BuildContext context, bool isDarkTheme) {
+  @override
+  Widget build(BuildContext context) {
+    Widget child;
+
+    if (_errorOccurred) {
+      child = Center(
+        key: const ValueKey('creditError'),
+        child: Text(
+          _errorMessage,
+          style: TextStyle(color: AppColors.opposedPrimaryColor),
+        ),
+      );
+    } else if (_purchasePending || _loading) {
+      child = _buildCreditSkeleton(context);
+    } else {
+      child = _buildCreditContent(context);
+    }
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 200),
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: child,
+      ),
+      child: child,
+    );
+  }
+
+  Widget _buildCreditSkeleton(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+
+    return Shimmer.fromColors(
+      baseColor: AppColors.shimmerBase,
+      highlightColor: AppColors.shimmerHighlight,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: screenWidth * 0.6,
+            height: screenHeight * 0.04,
+            decoration: BoxDecoration(
+              color: AppColors.skeletonContainer,
+              borderRadius: BorderRadius.circular(screenWidth * 0.02),
+            ),
+          ),
+          SizedBox(height: screenHeight * 0.005),
+          Container(
+            width: screenWidth * 0.9,
+            height: screenHeight * 0.025,
+            decoration: BoxDecoration(
+              color: AppColors.skeletonContainer,
+              borderRadius: BorderRadius.circular(screenWidth * 0.02),
+            ),
+          ),
+          SizedBox(height: screenHeight * 0.002),
+          Container(
+            width: screenWidth * 0.6,
+            height: screenHeight * 0.025,
+            decoration: BoxDecoration(
+              color: AppColors.skeletonContainer,
+              borderRadius: BorderRadius.circular(screenWidth * 0.02),
+            ),
+          ),
+          SizedBox(height: screenHeight * 0.005),
+          Expanded(
+            child: ListView.builder(
+              itemCount: 5,
+              itemBuilder: (context, index) {
+                return Padding(
+                  padding: EdgeInsets.only(
+                    top: index == 0 ? 0 : screenHeight * 0.007,
+                    bottom: screenHeight * 0.01,
+                    left: screenWidth * 0.035,
+                    right: screenWidth * 0.035,
+                  ),
+                  child: Container(
+                    width: double.infinity,
+                    height: screenHeight * 0.1,
+                    decoration: BoxDecoration(
+                      color: AppColors.skeletonContainer,
+                      borderRadius: BorderRadius.circular(screenWidth * 0.02),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCreditContent(BuildContext context) {
+    final localizations = AppLocalizations.of(context)!;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Text(
-          'Kredi Satın Al',
+          localizations.buyCredits,
           style: TextStyle(
-            fontSize: 24,
+            fontSize: screenWidth * 0.06,
             fontWeight: FontWeight.bold,
-            color: isDarkTheme ? Colors.white : Colors.black,
+            color: AppColors.opposedPrimaryColor,
           ),
           textAlign: TextAlign.center,
         ),
-        SizedBox(height: 8),
-        // Açıklama
+        SizedBox(height: screenHeight * 0.001),
         Text(
-          'İhtiyacınıza uygun kredi paketini seçin ve uygulamamızı daha fazla kullanın.',
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey,
-          ),
+          localizations.selectCreditPackageDescription,
+          style: TextStyle(fontSize: screenWidth * 0.035, color: AppColors.tertiaryColor),
           textAlign: TextAlign.center,
         ),
-        SizedBox(height: 16),
+        SizedBox(height: screenHeight * 0.001),
         Expanded(
           child: ListView.builder(
             itemCount: _creditPackages.length,
             itemBuilder: (context, index) {
               final package = _creditPackages[index];
               final isSelected = _selectedCardIndex == index;
-
               return GestureDetector(
                 onTap: () {
                   setState(() {
@@ -1954,52 +2015,54 @@ class _CreditContentWidgetState extends State<CreditContentWidget> {
                   widget.onCreditPackageSelected?.call(package);
                 },
                 child: AnimatedContainer(
-                  duration: Duration(milliseconds: 300),
-                  margin: EdgeInsets.symmetric(vertical: 8, horizontal: screenWidth * 0.04),
-                  padding: EdgeInsets.all(16),
+                  duration: const Duration(milliseconds: 300),
+                  margin: EdgeInsets.symmetric(
+                    vertical: screenHeight * 0.01,
+                    horizontal: screenWidth * 0.04,
+                  ),
+                  padding: EdgeInsets.all(screenWidth * 0.04),
                   decoration: BoxDecoration(
-                    color: isDarkTheme ? Colors.grey[800] : Colors.grey[300],
-                    borderRadius: BorderRadius.circular(12),
+                    color: AppColors.quaternaryColor,
+                    borderRadius: BorderRadius.circular(screenWidth * 0.03),
                     border: isSelected
-                        ? Border.all(
-                      color: isDarkTheme ? Colors.white : Colors.black,
-                      width: 2,
-                    )
-                        : Border.all(
-                      color: Colors.transparent,
-                      width: 2,
-                    ),
+                        ? Border.all(color: AppColors.opposedPrimaryColor, width: screenWidth * 0.003)
+                        : Border.all(color: Colors.transparent, width: screenWidth * 0.003),
                   ),
                   child: Row(
                     children: [
-                      // credit.svg İkonu
                       SvgPicture.asset(
                         'assets/credit.svg',
-                        width: 36,
-                        height: 36,
-                        color: isDarkTheme ? Colors.white : Colors.black,
+                        width: screenWidth * 0.1,
+                        height: screenWidth * 0.1,
+                        color: AppColors.opposedPrimaryColor,
                       ),
-                      SizedBox(width: 12),
-                      // Kredi Bilgisi
+                      SizedBox(width: screenWidth * 0.02),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              package.credits,
+                              localizations.creditPackage(package.amount),
                               style: TextStyle(
-                                fontSize: 18,
+                                fontSize: screenWidth * 0.045,
                                 fontWeight: FontWeight.bold,
-                                color: isDarkTheme ? Colors.white : Colors.black,
+                                color: AppColors.opposedPrimaryColor,
                               ),
                             ),
-                            SizedBox(height: 4),
-                            Text(
-                              package.price,
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.grey[700],
-                              ),
+                            Builder(
+                              builder: (context) {
+                                String displayedPrice = package.price;
+                                for (var product in _availableProducts) {
+                                  if (product.id == package.productId) {
+                                    displayedPrice = product.price;
+                                    break;
+                                  }
+                                }
+                                return Text(
+                                  displayedPrice,
+                                  style: TextStyle(fontSize: screenWidth * 0.04, color: AppColors.tertiaryColor),
+                                );
+                              },
                             ),
                           ],
                         ),
@@ -2012,18 +2075,6 @@ class _CreditContentWidgetState extends State<CreditContentWidget> {
           ),
         ),
       ],
-    );
-  }
-
-  void _showCustomNotification({
-    required String message,
-    required bool isSuccess,
-  }) {
-    final notificationService =
-    Provider.of<NotificationService>(context, listen: false);
-    notificationService.showNotification(
-        message: message,
-        isSuccess: isSuccess
     );
   }
 }

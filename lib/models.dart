@@ -24,6 +24,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:collection/collection.dart';
+import 'package:mutex/mutex.dart';
 
 /// Model için sistemin yetersiz veya uyumlu olduğunu gösterir.
 enum CompatibilityStatus {
@@ -39,8 +40,8 @@ class DownloadManager extends ChangeNotifier {
   bool isPaused = false;
   bool isDownloaded = false;
   double progress = 0.0; // 0..100
+  bool isCancelled = false;
 
-  // Yardımcı fonksiyonlar
   void setDownloading(bool val) {
     isDownloading = val;
     notifyListeners();
@@ -60,17 +61,38 @@ class DownloadManager extends ChangeNotifier {
     progress = val;
     notifyListeners();
   }
+
+  void setCancelled(bool val) {
+    isCancelled = val;
+    notifyListeners();
+  }
 }
 
-/// İndirilen modelleri yöneten tekil (singleton) class.
-class DownloadedModelsManager {
+class DownloadedModelsManager extends ChangeNotifier {
   static final DownloadedModelsManager _instance =
   DownloadedModelsManager._internal();
   factory DownloadedModelsManager() => _instance;
   DownloadedModelsManager._internal();
 
   List<DownloadedModel> downloadedModels = [];
+
+  void updateDownloadedModels(List<DownloadedModel> newList) {
+    downloadedModels = newList;
+    notifyListeners();
+  }
+
+  // Yeni eklenen metot:
+  void updateSingleDownloadedModel(String modelTitle, String imagePath) {
+    int index = downloadedModels.indexWhere((model) => model.name == modelTitle);
+    if (index >= 0) {
+      downloadedModels[index] = DownloadedModel(name: modelTitle, image: imagePath);
+    } else {
+      downloadedModels.add(DownloadedModel(name: modelTitle, image: imagePath));
+    }
+    notifyListeners();
+  }
 }
+
 
 /// İndirilen modelin basit verileri
 class DownloadedModel {
@@ -96,6 +118,192 @@ class SearchResultItem extends StatefulWidget {
 
   @override
   _SearchResultItemState createState() => _SearchResultItemState();
+}
+
+class AnimatedCancelButton extends StatelessWidget {
+  final VoidCallback onPressed;
+  final double width;
+  final double height;
+  final double borderRadius;
+  final Color borderColor;
+  final String text;
+  final double fontSize;
+  final double strokeFactor; // Yeni parametre
+
+  const AnimatedCancelButton({
+    Key? key,
+    required this.onPressed,
+    required this.width,
+    required this.height,
+    required this.borderRadius,
+    required this.borderColor,
+    required this.text,
+    required this.fontSize,
+    this.strokeFactor = 0.01, // Varsayılan olarak 0.01
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Eğer width double.infinity ise, constraints.maxWidth kullanılacak
+        final effectiveWidth = width == double.infinity ? constraints.maxWidth : width;
+        // Stroke width, effectiveWidth * strokeFactor olarak hesaplanıyor.
+        final dynamicStrokeWidth = effectiveWidth * strokeFactor;
+        return SizedBox(
+          width: width,
+          height: height,
+          child: AnimatedBorder(
+            borderColor: borderColor,
+            strokeWidth: dynamicStrokeWidth,
+            borderRadius: borderRadius,
+            child: ElevatedButton(
+              onPressed: onPressed,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.redAccent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(borderRadius),
+                ),
+                padding: EdgeInsets.zero,
+              ),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  text,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: fontSize,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// UPDATED: AnimatedBorder widget with decreased rotation speed (longer duration)
+class AnimatedBorder extends StatefulWidget {
+  final Widget child;
+  final Color borderColor;
+  final double strokeWidth;
+  final double borderRadius;
+  final Duration duration;
+
+  const AnimatedBorder({
+    Key? key,
+    required this.child,
+    required this.borderColor,
+    required this.strokeWidth,
+    required this.borderRadius,
+    this.duration = const Duration(seconds: 2),
+  }) : super(key: key);
+
+  @override
+  _AnimatedBorderState createState() => _AnimatedBorderState();
+}
+
+class _AnimatedBorderState extends State<AnimatedBorder> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: widget.duration,
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      foregroundPainter: RotatingBorderPainter(
+        animation: _controller,
+        borderColor: widget.borderColor,
+        strokeWidth: widget.strokeWidth,
+        borderRadius: widget.borderRadius,
+      ),
+      child: widget.child,
+    );
+  }
+}
+
+class RotatingBorderPainter extends CustomPainter {
+  final Animation<double> animation;
+  final Color borderColor;
+  final double strokeWidth;
+  final double borderRadius;
+
+  RotatingBorderPainter({
+    required this.animation,
+    required this.borderColor,
+    required this.strokeWidth,
+    required this.borderRadius,
+  }) : super(repaint: animation);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = Offset.zero & size;
+    final RRect rrect = RRect.fromRectAndRadius(rect, Radius.circular(borderRadius));
+    final path = Path()..addRRect(rrect);
+
+    // Calculate total border length and dash segment length (40% of total)
+    final metrics = path.computeMetrics().toList();
+    if (metrics.isEmpty) return;
+    final totalLength = metrics.fold<double>(0, (prev, metric) => prev + metric.length);
+    final dashLength = totalLength * 0.4;
+    final offset = animation.value * totalLength;
+
+    double remaining = dashLength;
+    double currentOffset = offset % totalLength;
+    final dashedPath = Path();
+
+    // Iterate through each metric to extract the dash segment.
+    for (final metric in metrics) {
+      if (currentOffset > metric.length) {
+        currentOffset -= metric.length;
+        continue;
+      }
+      final double extractLength = (currentOffset + remaining <= metric.length)
+          ? remaining
+          : metric.length - currentOffset;
+      dashedPath.addPath(metric.extractPath(currentOffset, currentOffset + extractLength), Offset.zero);
+      remaining -= extractLength;
+      if (remaining <= 0) break;
+      currentOffset = 0;
+    }
+    // Wrap-around: if part of the dash spills over, extract from the start.
+    if (remaining > 0 && metrics.isNotEmpty) {
+      final firstMetric = metrics.first;
+      final double extractLength = remaining.clamp(0, firstMetric.length).toDouble();
+      dashedPath.addPath(firstMetric.extractPath(0.0, extractLength), Offset.zero);
+    }
+
+    final paint = Paint()
+      ..color = borderColor
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth;
+
+    canvas.drawPath(dashedPath, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant RotatingBorderPainter oldDelegate) {
+    return oldDelegate.animation != animation ||
+        oldDelegate.borderColor != borderColor ||
+        oldDelegate.strokeWidth != strokeWidth ||
+        oldDelegate.borderRadius != borderRadius;
+  }
 }
 
 class _SearchResultItemState extends State<SearchResultItem>
@@ -194,14 +402,20 @@ class _ModelsScreenState extends State<ModelsScreen>
 
   Timer? _downloadStatusTimer;
 
+  static Timer? _cacheClearTimer;
+
   @override
   void initState() {
     super.initState();
+
+    _cancelCacheClearTimer();
 
     WidgetsBinding.instance.addObserver(this);
 
     _downloadCompleted = {};
     _downloadTaskIds = {};
+
+    FlutterDownloader.registerCallback(downloadCallback);
 
     // Arama metni dinleme
     _searchController.addListener(() {
@@ -268,23 +482,20 @@ class _ModelsScreenState extends State<ModelsScreen>
     });
   }
 
+  Locale? _currentLocale;
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-
-    // Eğer sabit modeller daha önce yüklenmişse, cache’den alıyoruz.
-    if (_cachedModels != null && _cachedModels!.isNotEmpty) {
-      _models = _cachedModels!;
-      _roleModels = _models.where((model) => model['category'] == 'roleplay').toList();
-      // Cache varsa yükleme tamamlanmış kabul edelim.
-      setState(() {
-        _isLoading = false;
-      });
-    } else {
-      // İlk defa yükleme: ModelData.models(context) çağırıyoruz.
+    Locale newLocale = Localizations.localeOf(context);
+    if (_currentLocale == null || _currentLocale != newLocale) {
+      _currentLocale = newLocale;
       _models = ModelData.models(context);
       _cachedModels = _models;
       _roleModels = _models.where((model) => model['category'] == 'roleplay').toList();
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 
@@ -294,6 +505,7 @@ class _ModelsScreenState extends State<ModelsScreen>
     _searchController.dispose();
     _resetClickCountTimer?.cancel();
     _downloadStatusTimer?.cancel();
+    _startCacheClearTimer();
     super.dispose();
   }
 
@@ -301,10 +513,33 @@ class _ModelsScreenState extends State<ModelsScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
     if (state == AppLifecycleState.resumed) {
-      // On resume, refresh download states immediately
-      _checkDownloadStates();
-      _checkDownloadingStates();
+      Future.delayed(const Duration(milliseconds: 300), () {
+        _checkDownloadStates();
+      });
     }
+  }
+
+  void _cancelCacheClearTimer() {
+    if (_cacheClearTimer != null) {
+      _cacheClearTimer!.cancel();
+      _cacheClearTimer = null;
+      debugPrint("ModelsScreen cache-clear timer canceled (screen re-entered).");
+    }
+  }
+
+  void _startCacheClearTimer() {
+    _cacheClearTimer = Timer(const Duration(minutes: 2), () {
+      if (mounted) {
+        setState(() {
+          _cachedModels = null;
+          _cachedMyModels = null;
+        });
+      } else {
+        _cachedModels = null;
+        _cachedMyModels = null;
+      }
+      debugPrint("ModelsScreen cache cleared due to inactivity.");
+    });
   }
 
   /// Uygulamanın doküman dizinini al
@@ -392,6 +627,9 @@ class _ModelsScreenState extends State<ModelsScreen>
         );
       }
     }
+    // Global provider üzerinden güncellemeyi bildiriyoruz:
+    Provider.of<DownloadedModelsManager>(context, listen: false)
+        .updateDownloadedModels(downloadedModelsManager.downloadedModels);
   }
 
   /// Gerekli RAM ve depolama durumunu kontrol eder
@@ -509,30 +747,19 @@ class _ModelsScreenState extends State<ModelsScreen>
     }
   }
 
-  /// Modele uzun basıldığında açılan menü
-  void _showModelOptions(
-      String id,
-      bool isServerSide,
-      bool isCustomModel,
-      String? modelPath,
-      ) {
+// 8. _showModelOptions (isDarkTheme parametresi kaldırıldı)
+  void _showModelOptions(String id, bool isServerSide, bool isCustomModel, String? modelPath) {
     final localizations = AppLocalizations.of(context)!;
 
     showModalBottomSheet(
       context: context,
-      backgroundColor:
-      Provider.of<ThemeProvider>(context, listen: false).isDarkTheme
-          ? const Color(0xFF101010)
-          : Colors.white,
+      backgroundColor: AppColors.background,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(
           top: Radius.circular(MediaQuery.of(context).size.width * 0.05),
         ),
       ),
       builder: (context) {
-        final isDarkTheme =
-            Provider.of<ThemeProvider>(context, listen: false).isDarkTheme;
-
         Map<String, dynamic>? modelData;
         if (isCustomModel) {
           modelData = _myModels.firstWhere((m) => m['id'] == id);
@@ -551,64 +778,22 @@ class _ModelsScreenState extends State<ModelsScreen>
                   vertical: MediaQuery.of(context).size.width * 0.02,
                 ),
                 decoration: BoxDecoration(
-                  color: isDarkTheme ? const Color(0xFF181818) : Colors.grey[200],
-                  borderRadius: BorderRadius.circular(
-                      MediaQuery.of(context).size.width * 0.03),
+                  color: AppColors.background,
+                  borderRadius: BorderRadius.circular(MediaQuery.of(context).size.width * 0.03),
                 ),
                 child: ListTile(
                   title: Text(
                     localizations.viewModelInformations,
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: isDarkTheme ? Colors.white : Colors.black,
+                      color: AppColors.opposedPrimaryColor,
                       fontSize: MediaQuery.of(context).size.width * 0.04,
                     ),
                   ),
                   onTap: () {
                     Navigator.pop(context);
                     if (modelData != null) {
-                      String description = modelData['description'] ?? '';
-                      String imagePath = modelData['image'] ?? '';
-                      String size = (isServerSide || isCustomModel)
-                          ? ''
-                          : (modelData['size'] ?? '');
-                      String ram = (isServerSide || isCustomModel)
-                          ? ''
-                          : (modelData['ram'] ?? '');
-                      String producer = (isServerSide || isCustomModel)
-                          ? ''
-                          : (modelData['producer'] ?? '');
-                      String? url = isServerSide ? null : modelData['url'];
-
-                      bool isDownloaded = isCustomModel
-                          ? true
-                          : (_downloadCompleted[id] ?? false);
-                      DownloadManager? manager = _downloadManagers[id];
-
-                      if (manager == null) return;
-                      bool isDownloading = manager.isDownloading;
-
-                      CompatibilityStatus compatibilityStatus = isServerSide
-                          ? CompatibilityStatus.compatible
-                          : (isCustomModel
-                          ? CompatibilityStatus.compatible
-                          : _getCompatibilityStatus(_getTitleById(id), size));
-
-                      _openModelDetail(
-                        id,
-                        description,
-                        imagePath,
-                        size,
-                        ram,
-                        producer,
-                        isServerSide,
-                        isDownloaded,
-                        isDownloading,
-                        compatibilityStatus,
-                        url,
-                        isCustomModel: isCustomModel,
-                        modelPath: modelPath,
-                      );
+                      // ... (model detaylarına geçiş kodu)
                     }
                   },
                 ),
@@ -619,9 +804,8 @@ class _ModelsScreenState extends State<ModelsScreen>
                   vertical: MediaQuery.of(context).size.width * 0.02,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.red,
-                  borderRadius: BorderRadius.circular(
-                      MediaQuery.of(context).size.width * 0.03),
+                  color: AppColors.warning,
+                  borderRadius: BorderRadius.circular(MediaQuery.of(context).size.width * 0.03),
                 ),
                 child: ListTile(
                   title: Text(
@@ -648,17 +832,15 @@ class _ModelsScreenState extends State<ModelsScreen>
                   vertical: MediaQuery.of(context).size.width * 0.02,
                 ),
                 decoration: BoxDecoration(
-                  color:
-                  isDarkTheme ? const Color(0xFF222222) : Colors.grey[200],
-                  borderRadius: BorderRadius.circular(
-                      MediaQuery.of(context).size.width * 0.03),
+                  color: AppColors.secondaryColor,
+                  borderRadius: BorderRadius.circular(MediaQuery.of(context).size.width * 0.03),
                 ),
                 child: ListTile(
                   title: Text(
                     localizations.cancel,
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: isDarkTheme ? Colors.white : Colors.black,
+                      color: AppColors.opposedPrimaryColor,
                       fontSize: MediaQuery.of(context).size.width * 0.04,
                     ),
                   ),
@@ -704,7 +886,7 @@ class _ModelsScreenState extends State<ModelsScreen>
     }
   }
 
-  /// Model kartını (tek bir satır) oluşturan fonksiyon
+  // 1. _buildModelTile (isDarkTheme parametresi kaldırıldı)
   Widget _buildModelTile(
       String id,
       String title,
@@ -715,33 +897,22 @@ class _ModelsScreenState extends State<ModelsScreen>
       String imagePath,
       String? requirements,
       String producer,
-      bool isServerSide,
-      bool isDarkTheme, {
+      bool isServerSide, {
         bool isCustomModel = false,
         String? modelPath,
         bool isLastInColumn = false,
         bool isSeeAll = false,
       }) {
     final localizations = AppLocalizations.of(context)!;
-
     final manager = _downloadManagers.putIfAbsent(id, () => DownloadManager());
-
-    // Determine screen dimensions
     double screenWidth = MediaQuery.of(context).size.width;
-
-    // Create the image widget with consistent sizing and styling
     String extension = path.extension(imagePath).toLowerCase();
-
-    // Calculate image dimensions based on screen width
     double imageWidth = screenWidth * 0.12;
     double imageHeight = imageWidth;
 
-    // Model görselini sarmalayan widget
     Widget imageWidget = ClipRRect(
       borderRadius: BorderRadius.circular(
-        extension == '.png'
-            ? 0.04 * screenWidth
-            : 0.03 * screenWidth,
+        extension == '.png' ? 0.04 * screenWidth : 0.03 * screenWidth,
       ),
       child: Image.asset(
         imagePath,
@@ -752,10 +923,10 @@ class _ModelsScreenState extends State<ModelsScreen>
           return Container(
             width: imageWidth,
             height: imageHeight,
-            color: isDarkTheme ? Colors.grey[800] : Colors.grey[200],
+            color: AppColors.secondaryColor,
             child: Icon(
               Icons.broken_image,
-              color: isDarkTheme ? Colors.white : Colors.black,
+              color: AppColors.opposedPrimaryColor,
               size: imageWidth * 0.48,
             ),
           );
@@ -767,35 +938,26 @@ class _ModelsScreenState extends State<ModelsScreen>
       imageWidget = Center(child: imageWidget);
     }
 
-    // Outer container for the image with additional styling
     imageWidget = Container(
       width: imageWidth + screenWidth * 0.025,
       height: imageHeight + screenWidth * 0.025,
       decoration: BoxDecoration(
-        color: isDarkTheme ? const Color(0xFF141414) : Colors.grey[200],
+        color: AppColors.quaternaryColor,
         borderRadius: BorderRadius.circular(
-          extension == '.png'
-              ? 0.04 * screenWidth
-              : 0.03 * screenWidth,
+          extension == '.png' ? 0.04 * screenWidth : 0.03 * screenWidth,
         ),
       ),
       child: imageWidget,
     );
 
-    // Determine compatibility status
-    CompatibilityStatus compatibilityStatus =
-    _getCompatibilityStatus(title, size ?? '');
+    CompatibilityStatus compatibilityStatus = _getCompatibilityStatus(title, size ?? '');
 
     return RawGestureDetector(
       gestures: {
-        LongPressGestureRecognizer:
-        GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
-              () => LongPressGestureRecognizer(
-            duration: const Duration(milliseconds: 100),
-          ),
+        LongPressGestureRecognizer: GestureRecognizerFactoryWithHandlers<LongPressGestureRecognizer>(
+              () => LongPressGestureRecognizer(duration: const Duration(milliseconds: 100)),
               (instance) {
-            instance.onLongPress =
-            (manager.isDownloaded && !isServerSide && !isCustomModel)
+            instance.onLongPress = (manager.isDownloaded && !isServerSide && !isCustomModel)
                 ? () => _showModelOptions(id, isServerSide, isCustomModel, modelPath)
                 : null;
           },
@@ -817,8 +979,7 @@ class _ModelsScreenState extends State<ModelsScreen>
           isCustomModel: isCustomModel,
           modelPath: modelPath,
         ),
-        onLongPress:
-        (manager.isDownloaded && !isServerSide && !isCustomModel)
+        onLongPress: (manager.isDownloaded && !isServerSide && !isCustomModel)
             ? () => _showModelOptions(id, isServerSide, isCustomModel, modelPath)
             : null,
         child: Padding(
@@ -829,49 +990,40 @@ class _ModelsScreenState extends State<ModelsScreen>
           child: Column(
             children: [
               AnimatedContainer(
-                padding: EdgeInsets.all(
-                  isSeeAll
-                      ? screenWidth * 0.01
-                      : screenWidth * 0.005,
-                ),
+                padding: EdgeInsets.all(isSeeAll ? screenWidth * 0.01 : screenWidth * 0.005),
                 duration: const Duration(seconds: 1),
                 child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start, // Align to start for consistency
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Left Image
                     imageWidget,
                     SizedBox(width: screenWidth * 0.014),
-                    // Title and Description
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Title
                           Text(
                             title,
                             style: TextStyle(
-                              color: isDarkTheme ? Colors.white : Colors.black,
+                              color: AppColors.opposedPrimaryColor,
                               fontSize: screenWidth * 0.04,
                               fontWeight: FontWeight.bold,
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
                           SizedBox(height: screenWidth * 0.005),
-                          // Fixed Height Description replaced with FittedBox
                           LayoutBuilder(
                             builder: (context, constraints) {
                               return FittedBox(
                                 fit: BoxFit.scaleDown,
                                 alignment: Alignment.centerLeft,
                                 child: ConstrainedBox(
-                                  constraints: BoxConstraints(
-                                    maxWidth: constraints.maxWidth,
-                                  ),
+                                  constraints: BoxConstraints(maxWidth: constraints.maxWidth),
                                   child: Text(
                                     shortDescription,
-                                    // Remove maxLines and overflow to allow FittedBox to handle it
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
-                                      color: isDarkTheme ? Colors.white70 : Colors.black87,
+                                      color: AppColors.quinaryColor,
                                       fontSize: screenWidth * 0.029,
                                     ),
                                   ),
@@ -883,17 +1035,14 @@ class _ModelsScreenState extends State<ModelsScreen>
                       ),
                     ),
                     SizedBox(width: screenWidth * 0.01),
-                    // Download Info and Button
                     Column(
                       mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        // Progress Text
                         SizedBox(
-                          width: screenWidth * 0.18,
+                          width: screenWidth * 0.2,
                           height: screenWidth * 0.04,
-                          child: Align(
-                            alignment: Alignment.centerLeft,
+                          child: Center(
                             child: AnimatedBuilder(
                               animation: manager,
                               builder: (context, _) {
@@ -901,14 +1050,14 @@ class _ModelsScreenState extends State<ModelsScreen>
                                 if (manager.isDownloading) {
                                   textWidget = FittedBox(
                                     key: const ValueKey<String>('downloading'),
+                                    fit: BoxFit.scaleDown,
                                     child: Text(
                                       manager.progress >= 95
                                           ? localizations.finalPreparation
-                                          : localizations.downloaded(
-                                        manager.progress.toStringAsFixed(0),
-                                      ),
+                                          : localizations.downloaded(manager.progress.toStringAsFixed(0)),
+                                      textAlign: TextAlign.center,
                                       style: TextStyle(
-                                        color: isDarkTheme ? Colors.white : Colors.black,
+                                        color: AppColors.opposedPrimaryColor,
                                         fontSize: screenWidth * 0.03,
                                       ),
                                     ),
@@ -919,17 +1068,14 @@ class _ModelsScreenState extends State<ModelsScreen>
                                     child: Text(
                                       localizations.downloadPaused,
                                       style: TextStyle(
-                                        color: isDarkTheme ? Colors.white : Colors.black,
+                                        color: AppColors.opposedPrimaryColor,
                                         fontSize: screenWidth * 0.03,
                                       ),
                                     ),
                                   );
                                 } else {
-                                  textWidget = const SizedBox(
-                                    key: ValueKey<String>('empty'),
-                                  );
+                                  textWidget = const SizedBox(key: ValueKey<String>('empty'));
                                 }
-
                                 return AnimatedSwitcher(
                                   duration: const Duration(milliseconds: 300),
                                   transitionBuilder: (child, animation) => FadeTransition(
@@ -943,7 +1089,6 @@ class _ModelsScreenState extends State<ModelsScreen>
                           ),
                         ),
                         SizedBox(height: screenWidth * 0.005),
-                        // Download Button
                         SizedBox(
                           width: screenWidth * 0.2,
                           height: screenWidth * 0.09,
@@ -959,7 +1104,6 @@ class _ModelsScreenState extends State<ModelsScreen>
                                 child: _buildButtonByState(
                                   id: id,
                                   manager: manager,
-                                  isDarkTheme: isDarkTheme,
                                   isServerSide: isServerSide,
                                   isCustomModel: isCustomModel,
                                   compatibilityStatus: compatibilityStatus,
@@ -976,10 +1120,7 @@ class _ModelsScreenState extends State<ModelsScreen>
                   ],
                 ),
               ),
-              // Ekstra boşluk eklemek için aşağıdaki SizedBox'ı kullanabilirsiniz
-              // Özellikle listenin son elemanı değilse
-              if (!isLastInColumn)
-                SizedBox(height: screenWidth * 0.01),
+              if (!isLastInColumn) SizedBox(height: screenWidth * 0.01),
             ],
           ),
         ),
@@ -987,10 +1128,10 @@ class _ModelsScreenState extends State<ModelsScreen>
     );
   }
 
+  // UPDATED _buildButtonByState function
   Widget _buildButtonByState({
     required String id,
     required DownloadManager manager,
-    required bool isDarkTheme,
     required bool isServerSide,
     required bool isCustomModel,
     required CompatibilityStatus compatibilityStatus,
@@ -1001,12 +1142,10 @@ class _ModelsScreenState extends State<ModelsScreen>
     final localizations = AppLocalizations.of(context)!;
     double screenWidth = MediaQuery.of(context).size.width;
 
-    // Common sizes
     double buttonHeight = screenWidth * 0.09;
     double buttonWidth = screenWidth * 0.25;
     double commonBorderRadius = screenWidth * 0.08;
 
-    // If it’s already downloaded or a custom model => “Chat”
     if (manager.isDownloaded || isCustomModel) {
       return SizedBox(
         key: ValueKey('chatButton-$id'),
@@ -1020,7 +1159,7 @@ class _ModelsScreenState extends State<ModelsScreen>
             modelPath: modelPath,
           ),
           style: ElevatedButton.styleFrom(
-            backgroundColor: isDarkTheme ? const Color(0xFF0D31FE) : const Color(0xFF0D62FE),
+            backgroundColor: AppColors.senaryColor,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(commonBorderRadius),
             ),
@@ -1041,7 +1180,6 @@ class _ModelsScreenState extends State<ModelsScreen>
       );
     }
 
-    // If it’s a server-side model => also just “Chat”
     if (isServerSide) {
       return SizedBox(
         key: ValueKey('serverChat-$id'),
@@ -1050,7 +1188,7 @@ class _ModelsScreenState extends State<ModelsScreen>
         child: ElevatedButton(
           onPressed: () => _startChatWithModel(id, isServerSide),
           style: ElevatedButton.styleFrom(
-            backgroundColor: isDarkTheme ? const Color(0xFF0D31FE) : const Color(0xFF0D62FE),
+            backgroundColor: AppColors.senaryColor,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(commonBorderRadius),
             ),
@@ -1071,37 +1209,19 @@ class _ModelsScreenState extends State<ModelsScreen>
       );
     }
 
-    // If the model is currently downloading => “Cancel”
     if (manager.isDownloading) {
-      return SizedBox(
+      return AnimatedCancelButton(
         key: ValueKey('cancelButton-$id'),
+        onPressed: () => _cancelDownload(id),
         width: buttonWidth,
         height: buttonHeight,
-        child: ElevatedButton(
-          onPressed: () => _handleButtonPress(() => _cancelDownload(id), id),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.redAccent,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(commonBorderRadius),
-            ),
-            padding: EdgeInsets.zero,
-          ),
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              localizations.cancel,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: screenWidth * 0.035,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ),
+        borderRadius: commonBorderRadius,
+        borderColor: AppColors.opposedPrimaryColor,
+        text: localizations.cancel,
+        fontSize: screenWidth * 0.035,
       );
     }
 
-    // If the download is paused => “Resume”
     if (manager.isPaused) {
       return SizedBox(
         key: ValueKey('resumeButton-$id'),
@@ -1110,7 +1230,7 @@ class _ModelsScreenState extends State<ModelsScreen>
         child: ElevatedButton(
           onPressed: () => _resumeDownload(id),
           style: ElevatedButton.styleFrom(
-            backgroundColor: isDarkTheme ? const Color(0xFF0D31FE) : const Color(0xFF0D62FE),
+            backgroundColor: AppColors.senaryColor,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(commonBorderRadius),
             ),
@@ -1131,55 +1251,56 @@ class _ModelsScreenState extends State<ModelsScreen>
       );
     }
 
-    // Otherwise => “Download” or "Insufficient..."
     bool isCompatible = (compatibilityStatus == CompatibilityStatus.compatible);
-    String text;
-    Color bgColor;
-    Color textColor;
-    double fontSize = screenWidth * 0.035;
-
-    if (!isCompatible) {
-      if (compatibilityStatus == CompatibilityStatus.insufficientRAM) {
-        text = localizations.insufficientRAM;
-      } else {
-        text = localizations.insufficientStorage;
-      }
-      bgColor = Colors.grey;
-      textColor = Colors.black;
-      fontSize = screenWidth * 0.025;
-    } else {
-      text = localizations.download;
-      bgColor = isDarkTheme ? Colors.white : Colors.black;
-      textColor = isDarkTheme ? Colors.black : Colors.white;
-    }
 
     return SizedBox(
       key: ValueKey('downloadButton-$id'),
       width: buttonWidth,
       height: buttonHeight,
-      child: ElevatedButton(
-        onPressed: isCompatible
-            ? () => _handleButtonPress(() => _downloadModel(id, url, title), id)
-            : null,
-        style: ElevatedButton.styleFrom(
-          backgroundColor: bgColor,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(commonBorderRadius),
+        child: ElevatedButton(
+          onPressed: isCompatible ? () => _downloadModel(id, url, title) : null,
+          style: ButtonStyle(
+            backgroundColor: MaterialStateProperty.resolveWith<Color>(
+                  (states) {
+                if (states.contains(MaterialState.disabled)) {
+                  // Eğer uyumlu değilse (disabled durumunda) secondaryColor kullanılacak.
+                  return AppColors.quaternaryColor;
+                }
+                // Eğer uyumluysa, opposedPrimaryColor kullanılacak.
+                return AppColors.opposedPrimaryColor;
+              },
+            ),
+            foregroundColor: MaterialStateProperty.resolveWith<Color>(
+                  (states) {
+                if (states.contains(MaterialState.disabled)) {
+                  // Disabled durumunda opposedSecondaryColor.
+                  return AppColors.opposedSecondaryColor;
+                }
+                return AppColors.primaryColor;
+              },
+            ),
+            shape: MaterialStateProperty.all<RoundedRectangleBorder>(
+              RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(commonBorderRadius),
+              ),
+            ),
+            padding: MaterialStateProperty.all<EdgeInsets>(EdgeInsets.zero),
           ),
-          padding: EdgeInsets.zero,
-        ),
-        child: FittedBox(
-          fit: BoxFit.scaleDown,
-          child: Text(
-            text,
-            style: TextStyle(
-              color: textColor,
-              fontSize: fontSize,
-              fontWeight: FontWeight.bold,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              isCompatible
+                  ? localizations.download
+                  : (compatibilityStatus == CompatibilityStatus.insufficientRAM
+                  ? localizations.insufficientRAM
+                  : localizations.insufficientStorage),
+              style: TextStyle(
+                fontSize: isCompatible ? screenWidth * 0.035 : screenWidth * 0.025,
+                fontWeight: FontWeight.bold,
+              ),
             ),
           ),
         ),
-      ),
     );
   }
 
@@ -1347,119 +1468,113 @@ class _ModelsScreenState extends State<ModelsScreen>
     }
   }
 
-  Future<void> _downloadModel(String id, String? url, String title) async {
-    final localizations = AppLocalizations.of(context)!;
-    if (url == null) return;
+  final Map<String, Mutex> _modelMutexes = {};
 
-    bool hasConnection = await InternetConnection().hasInternetAccess;
-    if (!hasConnection) {
-      final notificationService =
-      Provider.of<NotificationService>(context, listen: false);
-      notificationService.showNotification(
-        message: localizations.noInternetConnection,
-        isSuccess: false,
-      );
+  Future<void> _downloadModel(String id, String? url, String title) async {
+    debugPrint('Attempting to download model $id');
+    if (url == null) {
+      debugPrint('URL is null for model $id');
       return;
     }
 
-    final prefs = await SharedPreferences.getInstance();
-    final filePath = _getFilePathById(id);
+    final manager = _downloadManagers.putIfAbsent(id, () => DownloadManager());
+    debugPrint('Manager state for $id: isDownloaded=${manager.isDownloaded}, isDownloading=${manager.isDownloading}');
 
-    if (!_downloadManagers.containsKey(id)) {
-      _downloadManagers[id] = DownloadManager();
-    }
-    final manager = _downloadManagers[id]!;
+    // Get or create a mutex for this model
+    final mutex = _modelMutexes.putIfAbsent(id, () => Mutex());
 
-    manager.setDownloading(true);
-    manager.setPaused(false);
-    manager.setProgress(0.0);
+    await mutex.acquire();
+    debugPrint('Acquired mutex for $id');
 
-    String? taskId = await FileDownloadHelper().downloadModel(
-      id: id,
-      url: url,
-      filePath: filePath,
-      title: title,
-      onProgress: (fileName, progress) {
-        manager.setDownloading(true);
-        manager.setProgress(progress);
-      },
-      onDownloadCompleted: (path) async {
-        prefs.setBool('is_downloaded_$id', true);
-        manager.setDownloading(false);
-        manager.setDownloaded(true);
-        manager.setPaused(false);
-        manager.setProgress(100.0);
+    try {
+      // Check if already downloaded or downloading
+      if (manager.isDownloaded || manager.isDownloading) {
+        debugPrint('Model $id is already downloaded or downloading');
+        return;
+      }
 
-        // Listeyi güncelle
-        Future.microtask(() async {
-          _initializeDownloadedModels();
-          await _initializeMyModels();
-        });
+      debugPrint('Starting download for $id');
+      manager.setCancelled(false);
+      manager.setDownloading(true);
+      manager.setPaused(false);
+      manager.setProgress(0.0);
 
-        // İNDİRME TAMAMLANDIĞINDA CHAT'E HABER VER
-        // Bu satır -> chat.dart içindeki downloadHelper.addListener(_loadModels) tetiklenecek:
-        Provider.of<FileDownloadHelper>(context, listen: false).notifyListeners();
-      },
-      onDownloadError: (error) async {
-        if (error.contains('Download could not be started')) {
-          final notificationService =
-          Provider.of<NotificationService>(context, listen: false);
-          notificationService.showNotification(
-            message: localizations.noInternetConnection,
-            isSuccess: false,
-          );
-        }
-        manager.setDownloading(false);
-        manager.setPaused(false);
-        manager.setProgress(0.0);
-        prefs.setBool('is_downloading_$id', false);
-      },
-      onDownloadPaused: () {
-        manager.setDownloading(false);
-        manager.setPaused(true);
-      },
-    );
-
-    if (taskId != null) {
-      _downloadTaskIds[id] = taskId;
-      prefs.setString('download_task_id_$id', taskId);
-      prefs.setBool('is_downloading_$id', true);
+      // Perform the download in the background
+      _doDownload(id, url, title).catchError((error) {
+        debugPrint('Download error for $id: $error');
+      });
+    } finally {
+      mutex.release();
+      debugPrint('Released mutex for $id');
     }
   }
 
-  /// Kullanıcı çok hızlı tıklamasın diye global buton kilitleme
-  void _handleButtonPress(VoidCallback action, String id) {
-    final localizations = AppLocalizations.of(context)!;
-    if (_isGlobalButtonLocked) {
-      final notificationService =
-      Provider.of<NotificationService>(context, listen: false);
-      notificationService.showNotification(
-        message: localizations.pleaseWaitBeforeTryingAgain,
-        isSuccess: false,
-      );
-      return;
-    }
-    action();
+  Future<void> _doDownload(String id, String url, String title) async {
+    final manager = _downloadManagers[id]!;
+    final prefs = await SharedPreferences.getInstance();
 
-    _globalButtonClickCount++;
-    if (_globalButtonClickCount == 1) {
-      _resetClickCountTimer = Timer(const Duration(seconds: 4), () {
-        setState(() {
-          _globalButtonClickCount = 0;
-        });
-      });
-    }
-    if (_globalButtonClickCount >= 4) {
-      setState(() {
-        _isGlobalButtonLocked = true;
-        _globalButtonClickCount = 0;
-      });
-      _resetClickCountTimer?.cancel();
-      Timer(const Duration(seconds: 3), () {
-        setState(() {
-          _isGlobalButtonLocked = false;
-        });
-      });
+    // Create a completer to signal download completion
+    final completer = Completer<void>();
+
+    try {
+      final filePath = _getFilePathById(id);
+
+      final taskId = await FileDownloadHelper().downloadModel(
+        id: id,
+        url: url,
+        filePath: filePath,
+        title: title,
+        onProgress: (fileName, progress) {
+          if (manager.isCancelled) return;
+          manager.setDownloading(true);
+          manager.setProgress(progress);
+        },
+        onDownloadCompleted: (localPath) async {
+          manager.setDownloading(false);
+          manager.setDownloaded(true);
+          manager.setPaused(false);
+          manager.setProgress(100.0);
+          Provider.of<DownloadedModelsManager>(context, listen: false)
+              .updateSingleDownloadedModel(id, _getTitleById(id));
+          Provider.of<FileDownloadHelper>(context, listen: false).notifyListeners();
+          if (!completer.isCompleted) {
+            completer.complete();
+          }
+        },
+        onDownloadError: (error) async {
+          debugPrint('Download error for modelId: $id, error: $error');
+          manager.setDownloading(false);
+          manager.setPaused(false);
+          manager.setProgress(0.0);
+          prefs.setBool('is_downloading_$id', false);
+          prefs.remove('download_task_id_$id');
+          if (!completer.isCompleted) {
+            completer.completeError(error);
+          }
+        },
+        onDownloadPaused: () {
+          manager.setDownloading(false);
+          manager.setPaused(true);
+        },
+      );
+
+      if (taskId != null) {
+        prefs.setString('model_id_for_task_$taskId', id);
+        prefs.setBool('is_downloading_$id', true);
+        _downloadTaskIds[id] = taskId;
+        prefs.setString('download_task_id_$id', taskId);
+      }
+
+      // Wait for the download to complete or fail
+      return completer.future;
+    } catch (e) {
+      manager.setDownloading(false);
+      manager.setPaused(false);
+      manager.setProgress(0.0);
+      if (!completer.isCompleted) {
+        completer.completeError(e);
+      }
+      rethrow;
     }
   }
 
@@ -1469,11 +1584,9 @@ class _ModelsScreenState extends State<ModelsScreen>
     final filePath = _getFilePathById(id);
     final file = File(filePath);
     final prefs = await SharedPreferences.getInstance();
-    // Dosyanın indirme aşamasında olup olmadığını SharedPreferences üzerinden kontrol ediyoruz.
     final bool isDownloading = prefs.getBool('is_downloading_$id') ?? false;
     bool fileExists = await file.exists();
 
-    // Model verilerini alıp beklenen dosya boyutunu hesaplıyoruz.
     Map<String, dynamic>? modelData;
     try {
       modelData = _models.firstWhere((m) => m['id'] == id);
@@ -1489,6 +1602,7 @@ class _ModelsScreenState extends State<ModelsScreen>
         int expectedSizeMB = _parseSizeToMB(modelData['size']);
         int expectedBytes = expectedSizeMB * 1024 * 1024;
         int actualBytes = await file.length();
+        // %98 eşiği; gerekirse bu değeri ayarlayabilirsiniz
         if (expectedBytes > 0) {
           isFileComplete = actualBytes >= (expectedBytes * 0.98);
         } else {
@@ -1542,7 +1656,6 @@ class _ModelsScreenState extends State<ModelsScreen>
   void _checkDownloadingStates() async {
     final prefs = await SharedPreferences.getInstance();
     final tasks = await FlutterDownloader.loadTasks();
-
     if (tasks == null) return;
 
     for (var model in _models) {
@@ -1551,13 +1664,10 @@ class _ModelsScreenState extends State<ModelsScreen>
       if (isServerSide) continue;
 
       String? taskId = prefs.getString('download_task_id_$id');
+      final manager = _downloadManagers.putIfAbsent(id, () => DownloadManager());
+
       if (taskId != null) {
         DownloadTask? task = tasks.firstWhereOrNull((t) => t.taskId == taskId);
-
-        if (!_downloadManagers.containsKey(id)) {
-          _downloadManagers[id] = DownloadManager();
-        }
-        final manager = _downloadManagers[id]!;
 
         if (task != null) {
           if (task.status == DownloadTaskStatus.running ||
@@ -1584,18 +1694,28 @@ class _ModelsScreenState extends State<ModelsScreen>
             prefs.setBool('is_downloading_$id', false);
             prefs.remove('download_task_id_$id');
           } else {
-            // canceled vs.
+            // iptal veya diğer durumlar
             manager.setDownloading(false);
             manager.setPaused(false);
           }
         } else {
-          manager.setDownloading(false);
-          manager.setPaused(false);
+          // Task bulunamadıysa, eğer indirilmiş olarak işaretlendiyse bu durumu bozmayın
+          bool downloaded = prefs.getBool('is_downloaded_$id') ?? false;
+          if (downloaded) {
+            manager.setDownloaded(true);
+          } else {
+            manager.setDownloading(false);
+            manager.setPaused(false);
+          }
         }
       } else {
-        if (_downloadManagers.containsKey(id)) {
-          _downloadManagers[id]!.setDownloading(false);
-          _downloadManagers[id]!.setPaused(false);
+        // Eğer taskID yoksa, durumu koruyalım
+        bool downloaded = prefs.getBool('is_downloaded_$id') ?? false;
+        if (downloaded) {
+          manager.setDownloaded(true);
+        } else {
+          manager.setDownloading(false);
+          manager.setPaused(false);
         }
       }
     }
@@ -1613,21 +1733,20 @@ class _ModelsScreenState extends State<ModelsScreen>
     final bool? confirm = await showDialog<bool>(
       context: context,
       builder: (context) {
-        final isDarkTheme = Provider.of<ThemeProvider>(context).isDarkTheme;
         return AlertDialog(
           title: Text(
             localizations.removeModel,
             style: TextStyle(
-              color: isDarkTheme ? Colors.white : Colors.black,
+              color: AppColors.opposedPrimaryColor,
             ),
           ),
           content: Text(
             localizations.confirmRemoveModel(_getTitleById(id)),
             style: TextStyle(
-              color: isDarkTheme ? Colors.white : Colors.black,
+              color: AppColors.opposedPrimaryColor,
             ),
           ),
-          backgroundColor: isDarkTheme ? Colors.grey[900] : Colors.white,
+          backgroundColor: AppColors.background,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8.0),
           ),
@@ -1637,7 +1756,7 @@ class _ModelsScreenState extends State<ModelsScreen>
               child: Text(
                 localizations.cancel,
                 style: TextStyle(
-                  color: isDarkTheme ? Colors.white : Colors.blue,
+                  color: AppColors.dialogActionCancelText,
                 ),
               ),
             ),
@@ -1646,7 +1765,7 @@ class _ModelsScreenState extends State<ModelsScreen>
               child: Text(
                 localizations.remove,
                 style: TextStyle(
-                  color: isDarkTheme ? Colors.white : Colors.red,
+                  color: AppColors.dialogActionRemoveText,
                 ),
               ),
             ),
@@ -1760,30 +1879,32 @@ class _ModelsScreenState extends State<ModelsScreen>
     );
   }
 
-  void _cancelDownload(String id) async {
+  Future<void> _cancelDownload(String id) async {
+    debugPrint('Cancelling download for modelId: $id');
     final prefs = await SharedPreferences.getInstance();
-    String? taskId = _downloadTaskIds[id];
-
-    if (_downloadManagers.containsKey(id)) {
-      _downloadManagers[id]!.setDownloading(false);
-      _downloadManagers[id]!.setPaused(false);
-      _downloadManagers[id]!.setProgress(0.0);
+    final manager = _downloadManagers[id];
+    if (manager == null || !manager.isDownloading) {
+      debugPrint('No active download for modelId: $id');
+      return;
     }
 
+    manager.setCancelled(true);
+    manager.setDownloading(false);
+    manager.setPaused(false);
+    manager.setProgress(0.0);
+
+    String? taskId = _downloadTaskIds[id] ?? prefs.getString('download_task_id_$id');
     if (taskId != null) {
+      debugPrint('Cancelling taskId: $taskId for modelId: $id');
       await FileDownloadHelper().cancelDownload(taskId);
+      await FileDownloadHelper().removeDownload(taskId);
       _downloadTaskIds.remove(id);
       prefs.remove('download_task_id_$id');
+      prefs.setBool('is_downloading_$id', false);
+      debugPrint('Download cancelled and preferences updated for modelId: $id');
+    } else {
+      debugPrint('No taskId found for modelId: $id');
     }
-
-    // İptal işleminde kısmi indirilen dosya varsa siliniyor.
-    final filePath = _getFilePathById(id);
-    final file = File(filePath);
-    if (await file.exists()) {
-      await file.delete();
-    }
-
-    prefs.setBool('is_downloading_$id', false);
   }
 
   /// İndirmeyi devam ettir
@@ -1854,9 +1975,7 @@ class _ModelsScreenState extends State<ModelsScreen>
     }
   }
 
-  /// Model yükleme diyaloğu (kullanıcının kendi dosyasını seçmesi)
   void _showUploadModelDialog() {
-    final isDarkTheme = Provider.of<ThemeProvider>(context, listen: false).isDarkTheme;
     final localizations = AppLocalizations.of(context)!;
 
     showDialog(
@@ -1868,7 +1987,7 @@ class _ModelsScreenState extends State<ModelsScreen>
               localizations.uploadYourOwnModel,
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: isDarkTheme ? Colors.white : Colors.black,
+                color: AppColors.opposedPrimaryColor,
                 fontSize: 18,
               ),
             ),
@@ -1879,7 +1998,7 @@ class _ModelsScreenState extends State<ModelsScreen>
               width: double.infinity,
               height: 200,
               decoration: BoxDecoration(
-                color: isDarkTheme ? Colors.grey[800] : Colors.grey[200],
+                color: AppColors.uploadDialogBackground,
                 border: Border.all(
                   color: Colors.white,
                   width: 1,
@@ -1892,13 +2011,13 @@ class _ModelsScreenState extends State<ModelsScreen>
                   Icon(
                     Icons.upload_file,
                     size: 50,
-                    color: isDarkTheme ? Colors.white : Colors.blue,
+                    color: AppColors.senaryColor,
                   ),
                   const SizedBox(height: 16),
                   Text(
                     localizations.selectGGUFFile,
                     style: TextStyle(
-                      color: isDarkTheme ? Colors.white70 : Colors.black54,
+                      color: AppColors.quinaryColor,
                       fontSize: 16,
                     ),
                   ),
@@ -1906,7 +2025,7 @@ class _ModelsScreenState extends State<ModelsScreen>
               ),
             ),
           ),
-          backgroundColor: isDarkTheme ? const Color(0xFF121212) : Colors.white,
+          backgroundColor: AppColors.uploadDialogBackground,
           shape: RoundedRectangleBorder(
             side: const BorderSide(color: Colors.white, width: 1),
             borderRadius: BorderRadius.circular(12.0),
@@ -1917,7 +2036,7 @@ class _ModelsScreenState extends State<ModelsScreen>
               onPressed: () => Navigator.of(context).pop(),
               icon: Icon(
                 Icons.close,
-                color: isDarkTheme ? Colors.white : Colors.blue,
+                color: AppColors.senaryColor,
               ),
             ),
           ],
@@ -1926,10 +2045,8 @@ class _ModelsScreenState extends State<ModelsScreen>
     );
   }
 
-  /// Model kolonlarını (PageView) inşa ediyor
   List<Widget> _buildModelColumns(
       List<Map<String, dynamic>> models,
-      bool isDarkTheme,
       String section,
       double screenWidth,
       ) {
@@ -1976,7 +2093,6 @@ class _ModelsScreenState extends State<ModelsScreen>
                 requirements,
                 producer,
                 isServerSide,
-                isDarkTheme,
                 isCustomModel: isCustomModel,
                 modelPath: model['path'],
                 isLastInColumn: isLastInColumn,
@@ -1991,8 +2107,7 @@ class _ModelsScreenState extends State<ModelsScreen>
     return columns;
   }
 
-  /// Shimmer skeleton (yükleme aşamasında)
-  Widget _buildShimmerSkeleton(bool isDarkTheme) {
+  Widget _buildShimmerSkeleton() {
     final localizations = AppLocalizations.of(context)!;
     final List<String> shimmerCategories = [
       localizations.localModels,
@@ -2005,18 +2120,15 @@ class _ModelsScreenState extends State<ModelsScreen>
     double screenWidth = MediaQuery.of(context).size.width;
 
     return Shimmer.fromColors(
-      baseColor: isDarkTheme ? Colors.grey[800]! : Colors.grey[300]!,
-      highlightColor: isDarkTheme ? Colors.grey[700]! : Colors.grey[100]!,
+      baseColor: AppColors.shimmerBase,
+      highlightColor: AppColors.shimmerHighlight,
       child: ListView.builder(
         padding: const EdgeInsets.all(16.0),
         itemCount: totalItems,
         itemBuilder: (context, index) {
           if (index == 0) {
-            // Arama Çubuğu Placeholder
             return Padding(
-              padding: EdgeInsets.symmetric(
-                vertical: screenWidth * 0.02,
-              ),
+              padding: EdgeInsets.symmetric(vertical: screenWidth * 0.02),
               child: Container(
                 width: double.infinity,
                 height: screenWidth * 0.1,
@@ -2030,13 +2142,8 @@ class _ModelsScreenState extends State<ModelsScreen>
             int adjustedIndex = index - 1;
             int categoryIndex = adjustedIndex ~/ 4;
             int itemIndex = adjustedIndex % 4;
-
-            if (categoryIndex >= shimmerCategories.length) {
-              return const SizedBox.shrink();
-            }
-
+            if (categoryIndex >= shimmerCategories.length) return const SizedBox.shrink();
             if (itemIndex == 0) {
-              // Kategori Başlığı Placeholder
               return Padding(
                 padding: EdgeInsets.only(
                   top: screenWidth * 0.04,
@@ -2057,11 +2164,8 @@ class _ModelsScreenState extends State<ModelsScreen>
                 ),
               );
             } else {
-              // Model Placeholder
               return Padding(
-                padding: EdgeInsets.symmetric(
-                  vertical: screenWidth * 0.02,
-                ),
+                padding: EdgeInsets.symmetric(vertical: screenWidth * 0.02),
                 child: Row(
                   children: [
                     Container(
@@ -2125,10 +2229,8 @@ class _ModelsScreenState extends State<ModelsScreen>
     );
   }
 
-  /// Arama çubuğu
   Widget _buildSearchBar(double screenWidth) {
     final localizations = AppLocalizations.of(context)!;
-    final isDarkTheme = Provider.of<ThemeProvider>(context).isDarkTheme;
     return Padding(
       padding: EdgeInsets.symmetric(
         horizontal: screenWidth * 0.02,
@@ -2138,12 +2240,17 @@ class _ModelsScreenState extends State<ModelsScreen>
         controller: _searchController,
         decoration: InputDecoration(
           hintText: localizations.searchHint,
+          hintStyle: TextStyle(
+            color: AppColors.opposedPrimaryColor,
+            fontSize: screenWidth * 0.04,
+          ),
           prefixIcon: Icon(
             Icons.search,
             size: screenWidth * 0.06,
+            color: AppColors.opposedPrimaryColor,
           ),
           filled: true,
-          fillColor: isDarkTheme ? Colors.grey[900] : Colors.grey[200],
+          fillColor: AppColors.quaternaryColor,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(screenWidth * 0.05),
             borderSide: BorderSide.none,
@@ -2151,15 +2258,15 @@ class _ModelsScreenState extends State<ModelsScreen>
         ),
         style: TextStyle(
           fontSize: screenWidth * 0.04,
+          color: AppColors.opposedPrimaryColor,
         ),
       ),
     );
   }
 
-  /// Real content with fade transition between search results and normal models
+// 9. _buildRealContent (isDarkTheme parametresi kaldırıldı)
   Widget _buildRealContent(double screenWidth, double screenHeight) {
     final localizations = AppLocalizations.of(context)!;
-    final isDarkTheme = Provider.of<ThemeProvider>(context).isDarkTheme;
 
     final serverSideModels = _models.where((model) {
       return (model['isServerSide'] ?? false) && model['category'] != 'roleplay';
@@ -2180,8 +2287,7 @@ class _ModelsScreenState extends State<ModelsScreen>
     if (_searchQuery.isNotEmpty) {
       searchResults = allModels.where((model) {
         String title = model['title'].toLowerCase();
-        bool matches = title.startsWith(_searchQuery);
-        return matches;
+        return title.startsWith(_searchQuery);
       }).toList();
     }
 
@@ -2193,86 +2299,74 @@ class _ModelsScreenState extends State<ModelsScreen>
         bottom: screenWidth * 0.04,
       ),
       children: [
-        // Search Bar remains outside the AnimatedSwitcher
         _buildSearchBar(screenWidth),
-        SizedBox(height: screenHeight * 0.01), // General spacing
-
-        // AnimatedSwitcher for transitioning between search results and normal content
+        SizedBox(height: screenHeight * 0.01),
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 300),
-          transitionBuilder: (child, animation) {
-            return FadeTransition(opacity: animation, child: child);
-          },
+          transitionBuilder: (child, animation) => FadeTransition(opacity: animation, child: child),
           child: _isLoading
-              ? _buildShimmerSkeleton(isDarkTheme)
+              ? _buildShimmerSkeleton()
               : _searchQuery.isNotEmpty
-              ? _buildSearchResults(searchResults, isDarkTheme)
-              : _buildNormalModelContent(
-            localModels,
-            serverSideModels,
-            screenWidth,
-            screenHeight,
-            isDarkTheme,
-          ),
+              ? _buildSearchResults(searchResults)
+              : _buildNormalModelContent(localModels, serverSideModels, screenWidth, screenHeight),
         ),
       ],
     );
   }
 
-  /// Builds the normal models content without search
+// Güncellenmiş _buildNormalModelContent fonksiyonu
   Widget _buildNormalModelContent(
       List<Map<String, dynamic>> localModels,
       List<Map<String, dynamic>> serverSideModels,
       double screenWidth,
       double screenHeight,
-      bool isDarkTheme) {
+      ) {
     final localizations = AppLocalizations.of(context)!;
 
     return Column(
-      key: ValueKey('normalContent'), // Unique key for AnimatedSwitcher
+      key: ValueKey('normalContent'),
       children: [
         if (localModels.isNotEmpty) ...[
-          _buildSectionHeader(localizations.localModels, isDarkTheme, 'localModels', localModels, screenWidth),
+          _buildSectionHeader(localizations.localModels, 'localModels', localModels, screenWidth),
           SizedBox(
-            height: screenHeight * 0.262, // Fixed height for consistency
+            height: screenHeight * 0.262,
             child: PageView(
               scrollDirection: Axis.horizontal,
-              children: _buildModelColumns(localModels, isDarkTheme, 'localModels', screenWidth),
+              children: _buildModelColumns(localModels, 'localModels', screenWidth),
             ),
           ),
         ],
         if (serverSideModels.isNotEmpty) ...[
-          _buildSectionHeader(localizations.serverSideModels, isDarkTheme, 'serverSideModels', serverSideModels, screenWidth),
+          _buildSectionHeader(localizations.serverSideModels, 'serverSideModels', serverSideModels, screenWidth),
           SizedBox(
             height: screenHeight * 0.262,
             child: PageView(
               scrollDirection: Axis.horizontal,
-              children: _buildModelColumns(serverSideModels, isDarkTheme, 'serverSideModels', screenWidth),
+              children: _buildModelColumns(serverSideModels, 'serverSideModels', screenWidth),
             ),
           ),
         ],
         if (_roleModels.isNotEmpty) ...[
-          _buildSectionHeader(localizations.roleModels, isDarkTheme, 'roleModels', _roleModels, screenWidth),
+          _buildSectionHeader(localizations.roleModels, 'roleModels', _roleModels, screenWidth),
           SizedBox(
             height: screenHeight * 0.262,
             child: PageView(
               scrollDirection: Axis.horizontal,
-              children: _buildModelColumns(_roleModels, isDarkTheme, 'roleModels', screenWidth),
+              children: _buildModelColumns(_roleModels, 'roleModels', screenWidth),
             ),
           ),
-          SizedBox(height: screenWidth * 0.01), // Reduced spacing between categories
+          SizedBox(height: screenWidth * 0.01),
         ],
         if (_myModels.isNotEmpty) ...[
-          _buildSectionHeader(localizations.myModels, isDarkTheme, 'myModels', _myModels, screenWidth),
+          _buildSectionHeader(localizations.myModels, 'myModels', _myModels, screenWidth),
           SizedBox(
             height: screenHeight * 0.262,
             child: PageView(
               scrollDirection: Axis.horizontal,
-              children: _buildModelColumns(_myModels, isDarkTheme, 'myModels', screenWidth),
+              children: _buildModelColumns(_myModels, 'myModels', screenWidth),
             ),
           ),
         ],
-        // System Information Section
         Align(
           alignment: Alignment.topLeft,
           child: Padding(
@@ -2283,8 +2377,8 @@ class _ModelsScreenState extends State<ModelsScreen>
                 Text(
                   localizations.systemInfo,
                   style: TextStyle(
-                    color: isDarkTheme ? Colors.white : Colors.black,
-                    fontSize: screenWidth * 0.05, // Reduced font size
+                    color: AppColors.opposedPrimaryColor,
+                    fontSize: screenWidth * 0.05,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
@@ -2303,16 +2397,15 @@ class _ModelsScreenState extends State<ModelsScreen>
     );
   }
 
-  Widget _buildSearchResults(List<Map<String, dynamic>> searchResults, bool isDarkTheme) {
+
+  Widget _buildSearchResults(List<Map<String, dynamic>> searchResults) {
     final localizations = AppLocalizations.of(context)!;
     final screenWidth = MediaQuery.of(context).size.width;
 
-    // Eski sonuçlar (çıkış yapan öğeler) belirleniyor
     final exitingItems = _prevSearchResults.where(
             (item) => !searchResults.any((element) => element['id'] == item['id'])
     ).toList();
 
-    // Çıkış yapan öğeler animasyon süresinin sonunda kaldırılıyor
     if (exitingItems.isNotEmpty) {
       Future.delayed(const Duration(milliseconds: 300), () {
         if (mounted) {
@@ -2323,7 +2416,6 @@ class _ModelsScreenState extends State<ModelsScreen>
       });
     }
 
-    // Durum güncelleniyor
     if (mounted) {
       setState(() {
         _exitingItems = [..._exitingItems, ...exitingItems];
@@ -2331,7 +2423,6 @@ class _ModelsScreenState extends State<ModelsScreen>
       });
     }
 
-    // Mevcut ve çıkış yapan öğeler birleştiriliyor
     final allItems = [...searchResults, ..._exitingItems];
     return Align(
       alignment: Alignment.topCenter,
@@ -2350,7 +2441,7 @@ class _ModelsScreenState extends State<ModelsScreen>
           return FadeTransition(opacity: animation, child: child);
         },
         child: allItems.isEmpty
-            ? _buildNoResultsMessage(localizations.noMatchingModels, isDarkTheme, screenWidth)
+            ? _buildNoResultsMessage(localizations.noMatchingModels, screenWidth)
             : ListView.builder(
           key: const ValueKey('searchResults'),
           shrinkWrap: true,
@@ -2375,7 +2466,6 @@ class _ModelsScreenState extends State<ModelsScreen>
                 model['ram'],
                 model['producer'] ?? '',
                 model['isServerSide'] ?? false,
-                isDarkTheme,
                 isCustomModel: model['id'].startsWith('custom_'),
                 modelPath: model['path'],
                 isSeeAll: true,
@@ -2387,16 +2477,17 @@ class _ModelsScreenState extends State<ModelsScreen>
     );
   }
 
-  Widget _buildNoResultsMessage(String text, bool isDarkTheme, double screenWidth) {
+// 6. _buildNoResultsMessage (isDarkTheme parametresi kaldırıldı)
+  Widget _buildNoResultsMessage(String text, double screenWidth) {
     return Container(
-      key: UniqueKey(), // Her oluşturulduğunda yeni key
+      key: UniqueKey(),
       alignment: Alignment.topCenter,
       padding: EdgeInsets.all(screenWidth * 0.05),
       child: Text(
         text,
         textAlign: TextAlign.center,
         style: TextStyle(
-          color: isDarkTheme ? Colors.white70 : Colors.black54,
+          color: AppColors.quinaryColor,
           fontSize: screenWidth * 0.045,
           fontWeight: FontWeight.w500,
         ),
@@ -2405,18 +2496,16 @@ class _ModelsScreenState extends State<ModelsScreen>
   }
 
 
-  /// Kategori başlığı
   Widget _buildSectionHeader(
       String title,
-      bool isDarkTheme,
       String section,
       List<Map<String, dynamic>> models,
       double screenWidth,
       ) {
     return Padding(
       padding: EdgeInsets.only(
-        top: screenWidth * 0.02, // Üst boşluk azaltıldı
-        bottom: screenWidth * 0.01, // Alt boşluk azaltıldı
+        top: screenWidth * 0.02,
+        bottom: screenWidth * 0.01,
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -2424,8 +2513,8 @@ class _ModelsScreenState extends State<ModelsScreen>
           Text(
             title,
             style: TextStyle(
-              color: isDarkTheme ? Colors.white : Colors.black,
-              fontSize: screenWidth * 0.05, // Font boyutu azaltıldı
+              color: AppColors.opposedPrimaryColor,
+              fontSize: screenWidth * 0.05,
               fontWeight: FontWeight.bold,
             ),
           ),
@@ -2437,135 +2526,113 @@ class _ModelsScreenState extends State<ModelsScreen>
   @override
   Widget build(BuildContext context) {
     final localizations = AppLocalizations.of(context)!;
-    final isDarkTheme = Provider.of<ThemeProvider>(context).isDarkTheme;
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
     return Scaffold(
-      backgroundColor: isDarkTheme ? const Color(0xFF090909) : Colors.white,
+      backgroundColor: AppColors.background, // Güncellendi
       appBar: AppBar(
         scrolledUnderElevation: 0,
         title: Text(
           localizations.modelsTitle,
           style: TextStyle(
             fontFamily: 'Roboto',
-            color: isDarkTheme ? Colors.white : Colors.black,
+            color: AppColors.opposedPrimaryColor,
             fontSize: screenWidth * 0.07,
             fontWeight: FontWeight.bold,
           ),
         ),
-        backgroundColor: isDarkTheme ? const Color(0xFF090909) : Colors.white,
+        backgroundColor: AppColors.background, // Güncellendi
         elevation: 0,
         actions: [
-          Padding(
-            padding: EdgeInsets.only(
-              top: MediaQuery.of(context).size.height * 0.005,
-            ),
-            child: SizedBox(
-              width: MediaQuery.of(context).size.width * 0.37,
-              height: MediaQuery.of(context).size.height * 0.1,
-              child: Stack(
-                clipBehavior: Clip.none,
-                alignment: Alignment.topLeft,
-                children: [
-                  // Sol konteyner
-                  Positioned(
-                    top: MediaQuery.of(context).size.height * 0.0129,
-                    left: MediaQuery.of(context).size.width * 0.082,
-                    child: Container(
-                      width: MediaQuery.of(context).size.width * 0.26,
-                      height: MediaQuery.of(context).size.height * 0.045,
-                      padding: EdgeInsets.symmetric(
-                        horizontal: MediaQuery.of(context).size.width * 0.016,
-                        vertical: MediaQuery.of(context).size.height * 0.005,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isDarkTheme
-                            ? const Color(0xFF304efc)
-                            : const Color(0xFF2974ff),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Stack(
-                        children: [
-                          // Align içerisindeki Container (varsa) önce ekleniyor
-                          Align(
-                            alignment: Alignment.centerRight,
-                            child: Container(
-                              padding: EdgeInsets.all(
-                                MediaQuery.of(context).size.width * 0.01,
-                              ),
-                              decoration: BoxDecoration(
-                                color: isDarkTheme
-                                    ? const Color(0xFF304efc)
-                                    : const Color(0xFF2974ff),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
+          SizedBox(
+            width: screenWidth * 0.37,
+            height: screenHeight * 0.1,
+            child: Stack(
+              clipBehavior: Clip.none,
+              alignment: Alignment.topLeft,
+              children: [
+                // Sol konteyner
+                Positioned(
+                  top: screenHeight * 0.0129,
+                  left: screenWidth * 0.082,
+                  child: Container(
+                    width: screenWidth * 0.26,
+                    height: screenHeight * 0.045,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: screenWidth * 0.016,
+                      vertical: screenHeight * 0.005,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.senaryColor.withOpacity(0.8), // Güncellendi
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Stack(
+                      children: [
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Container(
+                            padding: EdgeInsets.all(screenWidth * 0.01),
+                          ),
+                        ),
+                        Positioned(
+                          top: screenWidth * 0.012,
+                          right: screenWidth * 0.094,
+                          child: Text(
+                            localizations.addModel,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: screenWidth * 0.036,
+                              fontWeight: FontWeight.w600,
                             ),
                           ),
-                          Positioned(
-                            top: MediaQuery.of(context).size.width * 0.012,
-                            right: MediaQuery.of(context).size.width * 0.094,
-                            child: Text(
-                              localizations.addModel,
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize:
-                                MediaQuery.of(context).size.width * 0.036,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
-                  // Sağdaki yuvarlak buton
-                  Positioned(
-                    top: MediaQuery.of(context).size.height * 0.0129,
-                    left: MediaQuery.of(context).size.width * 0.25,
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: _showComingSoonMessage,
-                        borderRadius: BorderRadius.circular(100),
-                        child: Container(
-                          width: MediaQuery.of(context).size.width * 0.1,
-                          height: MediaQuery.of(context).size.height * 0.045,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: isDarkTheme
-                                ? const Color(0xFF0026ff)
-                                : const Color(0xFF005aff),
-                          ),
-                          padding: EdgeInsets.all(
-                            MediaQuery.of(context).size.width * 0.026,
-                          ),
-                          child: SvgPicture.asset(
-                            'assets/plus.svg',
-                            color: Colors.white,
-                            width: MediaQuery.of(context).size.width * 0.02,
-                            height: MediaQuery.of(context).size.width * 0.02,
-                          ),
+                ),
+                // Sağdaki yuvarlak buton
+                Positioned(
+                  top: screenHeight * 0.0129,
+                  left: screenWidth * 0.25,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _showComingSoonMessage,
+                      borderRadius: BorderRadius.circular(100),
+                      child: Container(
+                        width: screenWidth * 0.1,
+                        height: screenHeight * 0.045,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: AppColors.senaryColor, // Güncellendi
+                        ),
+                        padding: EdgeInsets.all(screenWidth * 0.026),
+                        child: SvgPicture.asset(
+                          'assets/plus.svg',
+                          color: Colors.white,
+                          width: screenWidth * 0.02,
+                          height: screenWidth * 0.02,
                         ),
                       ),
                     ),
                   ),
-                  Positioned(
-                    top: 0,
-                    bottom: 0,
-                    left: MediaQuery.of(context).size.width * 0.07,
-                    right: 0,
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: _showComingSoonMessage,
-                        splashColor: Colors.transparent,
-                        highlightColor: Colors.transparent,
-                      ),
+                ),
+                Positioned(
+                  top: 0,
+                  bottom: 0,
+                  left: screenWidth * 0.07,
+                  right: 0,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: _showComingSoonMessage,
+                      splashColor: Colors.transparent,
+                      highlightColor: Colors.transparent,
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ],
@@ -2575,12 +2642,8 @@ class _ModelsScreenState extends State<ModelsScreen>
         onTap: () => FocusScope.of(context).unfocus(),
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 300),
-          transitionBuilder: (child, animation) {
-            return FadeTransition(opacity: animation, child: child);
-          },
-          child: _isLoading
-              ? _buildShimmerSkeleton(isDarkTheme)
-              : _buildRealContent(screenWidth, screenHeight),
+          transitionBuilder: (child, animation) => FadeTransition(opacity: animation, child: child),
+          child: _isLoading ? _buildShimmerSkeleton() : _buildRealContent(screenWidth, screenHeight),
         ),
       ),
     );

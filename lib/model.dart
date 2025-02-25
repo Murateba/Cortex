@@ -4,12 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'models.dart';
-import 'package:flutter_gen/gen_l10n/app_localizations.dart'; // Localization
-import 'package:provider/provider.dart'; // Provider
+import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+import 'package:provider/provider.dart';
 import 'notifications.dart';
-import 'theme.dart'; // ThemeProvider
-// For calculations
-import 'package:shimmer/shimmer.dart'; // Shimmer
+import 'theme.dart';
+import 'package:shimmer/shimmer.dart';
 
 class ModelDetailPage extends StatefulWidget {
   final String id;
@@ -23,17 +22,11 @@ class ModelDetailPage extends StatefulWidget {
   final bool isDownloading;
   final CompatibilityStatus compatibilityStatus;
   final bool isServerSide;
-
-  // İNDİRME İŞLEMLERİ VE BUTONLAR
   final VoidCallback? onDownloadPressed;
   final Future<void> Function()? onRemovePressed;
   final VoidCallback? onChatPressed;
   final VoidCallback? onCancelPressed;
-
-  // YENİ: DownloadManager örneğini de constructor'a ekliyoruz.
   final DownloadManager? downloadManager;
-
-  // Ekstra alanlar
   final String stars;
   final String features;
   final String category;
@@ -58,7 +51,7 @@ class ModelDetailPage extends StatefulWidget {
     this.onRemovePressed,
     this.onChatPressed,
     this.onCancelPressed,
-    this.downloadManager, // <-- YENİ parametre
+    this.downloadManager,
     required this.stars,
     required this.features,
     required this.category,
@@ -79,25 +72,23 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
   Timer? _resetClickCountTimer;
   List<String> _parsedFeatures = [];
   Map<int, int> _starCounts = {};
-  double _averageRating = 0.0; // Ortalama puan
-  bool _isLoading = true;      // Loading state
+  double _averageRating = 0.0;
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
     _isDownloaded = widget.isDownloaded;
     _isDownloading = widget.isDownloading;
-
     _parseStarsData();
     _parseFeaturesData();
-
-    // Simülasyon yerine direkt _isLoading false
+    // Simülasyon yerine direkt yüklemenin bittiğini bildiriyoruz.
     setState(() {
       _isLoading = false;
     });
   }
 
-  /// Yıldız verilerini (örn. "5stars345/4stars200/...") ayrıştırır
+  /// Yıldız verilerini ayrıştırır (örn. "5stars345/4stars200/...")
   void _parseStarsData() {
     final parts = widget.stars.split('/');
     final Map<int, int> result = {};
@@ -111,7 +102,6 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
       }
     }
 
-    // Ortalama puan
     int totalStars = 0;
     int totalCount = 0;
     result.forEach((star, count) {
@@ -126,27 +116,20 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
     });
   }
 
-  /// Özellikler ("features") ayrıştırılır
+  /// Özellikleri ayrıştırır
   void _parseFeaturesData() {
     List<String> features = [];
 
-    // widget.features string'ini parçala
     if (widget.features.isNotEmpty) {
       final parts = widget.features.split('/');
-      features.addAll(
-        parts.where((feature) => feature.toLowerCase() != 'offline'),
-      );
+      features.addAll(parts.where((feature) => feature.toLowerCase() != 'offline'));
     }
-
-    // Roleplay ise
     if (widget.category.toLowerCase() == 'roleplay') {
       features.add('roleplay');
     }
-    // Fotoğraf işleme özelliği varsa
     if (widget.canHandleImage) {
       features.add('photo');
     }
-    // Lokal modelse "offline" ekle
     if (!widget.isServerSide) {
       features.add('offline');
     }
@@ -156,7 +139,7 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
     });
   }
 
-  /// Model silme
+  /// Model silme işlemi
   Future<void> _removeModel() async {
     if (widget.onRemovePressed != null) {
       await widget.onRemovePressed!();
@@ -176,96 +159,34 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
     }
   }
 
-  /// Çok hızlı tıklamaya karşı koruma
-  void _handleButtonPress(VoidCallback action) {
-    // Server-side modeli için
-    if (widget.isServerSide) {
-      action();
-      return;
-    }
-
-    // Lokal model + global kilit varsa
-    if (_isButtonLocked) {
-      final notificationService =
-      Provider.of<NotificationService>(context, listen: false);
-      notificationService.showNotification(
-        message: AppLocalizations.of(context)!.pleaseWaitBeforeTryingAgain,
-        isSuccess: false,
-        bottomOffset: 19,
-        fontSize: 12,
-      );
-      return;
-    }
-
-    _buttonClickCount++;
-    if (_buttonClickCount == 1) {
-      _resetClickCountTimer = Timer(const Duration(seconds: 4), () {
-        if (mounted) {
-          setState(() {
-            _buttonClickCount = 0;
-          });
-        }
-      });
-    }
-
-    if (_buttonClickCount >= 4) {
-      final notificationService =
-      Provider.of<NotificationService>(context, listen: false);
-      notificationService.showNotification(
-        message: AppLocalizations.of(context)!.pleaseWaitBeforeTryingAgain,
-        isSuccess: false,
-        bottomOffset: 19,
-        fontSize: 12,
-      );
-
-      if (mounted) {
-        setState(() {
-          _isButtonLocked = true;
-          _buttonClickCount = 0;
-        });
-      }
-      _resetClickCountTimer?.cancel();
-      Timer(const Duration(seconds: 3), () {
-        if (mounted) {
-          setState(() {
-            _isButtonLocked = false;
-          });
-        }
-      });
-      return;
-    }
-
-    action();
-  }
-
   @override
   Widget build(BuildContext context) {
     final localizations = AppLocalizations.of(context)!;
-    final isDarkTheme = Provider.of<ThemeProvider>(context).isDarkTheme;
-
-    // Ekran boyutlarını al
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
+    final bool isDarkTheme = AppColors.currentTheme == 'dark';
 
     return Scaffold(
-      backgroundColor: isDarkTheme ? const Color(0xFF090909) : Colors.white,
+      backgroundColor: AppColors.background,
       appBar: _buildAppBar(localizations, isDarkTheme, screenWidth),
-      bottomNavigationBar: _buildBottomActionButtons(localizations, isDarkTheme, screenWidth, screenHeight),
+      bottomNavigationBar:
+      _buildBottomActionButtons(localizations, isDarkTheme, screenWidth, screenHeight),
       body: SafeArea(
         child: AnimatedSwitcher(
           duration: const Duration(milliseconds: 300),
           transitionBuilder: (child, animation) =>
               FadeTransition(opacity: animation, child: child),
           child: _isLoading
-              ? _buildShimmerScreen(isDarkTheme, screenWidth, screenHeight, key: const ValueKey('shimmer'))
+              ? _buildShimmerScreen(screenWidth, screenHeight,
+              isDarkTheme: isDarkTheme, key: const ValueKey('shimmer'))
               : SingleChildScrollView(
             key: const ValueKey('content'),
-            padding: EdgeInsets.all(screenWidth * 0.04), // %4 padding
+            padding: EdgeInsets.all(screenWidth * 0.04),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildModelHeader(localizations, isDarkTheme, screenWidth),
-                SizedBox(height: screenHeight * 0.02), // %2 boşluk
+                SizedBox(height: screenHeight * 0.02),
                 _buildDescriptionSection(localizations, isDarkTheme, screenWidth),
                 SizedBox(height: screenHeight * 0.02),
                 _buildRatingsSection(localizations, isDarkTheme, screenWidth),
@@ -277,8 +198,8 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
                     localizations.allEvaluationsByTestTeam,
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: isDarkTheme ? Colors.white70 : Colors.black87,
-                      fontSize: screenWidth * 0.028, // %2.8 font
+                      color: AppColors.quinaryColor,
+                      fontSize: screenWidth * 0.028,
                     ),
                   ),
                 ),
@@ -290,7 +211,6 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
     );
   }
 
-// -- UPDATED APP BAR --
   PreferredSizeWidget _buildAppBar(
       AppLocalizations localizations, bool isDarkTheme, double screenWidth) {
     return AppBar(
@@ -300,8 +220,8 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
         widget.title,
         style: TextStyle(
           fontFamily: 'Roboto',
-          color: isDarkTheme ? Colors.white : Colors.black,
-          fontSize: screenWidth * 0.055, // %5.5 font
+          color: AppColors.opposedPrimaryColor,
+          fontSize: screenWidth * 0.055,
           fontWeight: FontWeight.bold,
         ),
       )
@@ -313,31 +233,28 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
             if (widget.downloadManager!.progress >= 95) {
               downloadStatus = localizations.finalPreparation;
             } else {
-              downloadStatus =
-                  localizations.downloaded(widget.downloadManager!.progress.toStringAsFixed(0));
+              downloadStatus = localizations
+                  .downloaded(widget.downloadManager!.progress.toStringAsFixed(0));
             }
           } else if (widget.downloadManager!.isPaused) {
             downloadStatus = localizations.downloadPaused;
           }
-
           return Row(
             children: [
-              // Model Başlığı
               Expanded(
                 child: Text(
                   widget.title,
                   style: TextStyle(
                     fontFamily: 'Roboto',
-                    color: isDarkTheme ? Colors.white : Colors.black,
-                    fontSize: screenWidth * 0.055, // %5.5 font
+                    color: AppColors.opposedPrimaryColor,
+                    fontSize: screenWidth * 0.055,
                     fontWeight: FontWeight.bold,
                   ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
-              // İndirme Durumu ile Fade Animasyonu ve Sabit Alan
               SizedBox(
-                width: screenWidth * 0.25, // %25 genişlik
+                width: screenWidth * 0.25,
                 child: AnimatedSwitcher(
                   duration: const Duration(milliseconds: 200),
                   transitionBuilder: (child, animation) {
@@ -353,20 +270,18 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
                       downloadStatus,
                       key: ValueKey<String>(downloadStatus),
                       style: TextStyle(
-                        color: isDarkTheme
-                            ? Colors.white70
-                            : Colors.black87,
-                        fontSize: screenWidth * 0.035, // %3.5 font
+                        color: AppColors.quinaryColor,
+                        fontSize: screenWidth * 0.035,
                       ),
-                      maxLines: 1, // Ensure single line
-                      overflow: TextOverflow.ellipsis, // Ellipsis for overflow
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   )
                       : Opacity(
                     key: const ValueKey('empty'),
                     opacity: 0.0,
                     child: Text(
-                      '', // Boş metin
+                      '',
                       style: TextStyle(
                         fontSize: screenWidth * 0.035,
                       ),
@@ -378,30 +293,30 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
           );
         },
       ),
-      backgroundColor: isDarkTheme ? const Color(0xFF090909) : Colors.white,
+      backgroundColor: AppColors.background,
       elevation: 0,
       iconTheme: IconThemeData(
-        color: isDarkTheme ? Colors.white : Colors.black,
-        size: screenWidth * 0.07, // %7 icon size
+        color: AppColors.opposedPrimaryColor,
+        size: screenWidth * 0.07,
       ),
       actions: const [],
     );
   }
 
-
-  Widget _buildModelHeader(AppLocalizations localizations, bool isDarkTheme, double screenWidth) {
+  Widget _buildModelHeader(
+      AppLocalizations localizations, bool isDarkTheme, double screenWidth) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Sol kısım: Model görseli
+        // Model görseli
         Expanded(
           flex: 3,
           child: AspectRatio(
-            aspectRatio: 1, // Kare oranı korur
+            aspectRatio: 1,
             child: Container(
               decoration: BoxDecoration(
                 color: Colors.transparent,
-                borderRadius: BorderRadius.circular(screenWidth * 0.04), // Dinamik border radius
+                borderRadius: BorderRadius.circular(screenWidth * 0.04),
                 image: DecorationImage(
                   image: AssetImage(widget.imagePath),
                   fit: BoxFit.cover,
@@ -410,33 +325,30 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
             ),
           ),
         ),
-        SizedBox(width: screenWidth * 0.05), // Dinamik aralık
-        // Sağ kısım: Sadece Model adı + producer + vb.
+        SizedBox(width: screenWidth * 0.05),
+        // Model bilgileri (başlık, producer, vs.)
         Expanded(
           flex: 5,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Model Başlığı
               Text(
                 widget.title,
                 style: GoogleFonts.poppins(
-                  color: isDarkTheme ? Colors.white : Colors.black,
-                  fontSize: screenWidth * 0.06, // %6 font
+                  color: AppColors.opposedPrimaryColor,
+                  fontSize: screenWidth * 0.06,
                   fontWeight: FontWeight.bold,
                 ),
               ),
               SizedBox(height: screenWidth * 0.01),
-              // Producer
               Text(
                 widget.producer,
                 style: GoogleFonts.poppins(
-                  color: isDarkTheme ? Colors.white70 : Colors.black87,
-                  fontSize: screenWidth * 0.04, // %4 font
+                  color: AppColors.quinaryColor,
+                  fontSize: screenWidth * 0.04,
                 ),
               ),
               SizedBox(height: screenWidth * 0.02),
-              // Lokal model için size + ram / Server-side model için parameters + context
               if (!widget.isServerSide) ...[
                 FittedBox(
                   fit: BoxFit.scaleDown,
@@ -446,14 +358,14 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
                         'assets/storage.svg',
                         width: screenWidth * 0.05,
                         height: screenWidth * 0.05,
-                        color: isDarkTheme ? Colors.white70 : Colors.black54,
+                        color: AppColors.quinaryColor,
                       ),
                       SizedBox(width: screenWidth * 0.02),
                       Text(
                         '${localizations.storage}: ${widget.size}',
                         style: GoogleFonts.poppins(
-                          color: isDarkTheme ? Colors.white70 : Colors.black87,
-                          fontSize: screenWidth * 0.04, // %4 font
+                          color: AppColors.quinaryColor,
+                          fontSize: screenWidth * 0.04,
                         ),
                       ),
                     ],
@@ -468,14 +380,14 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
                         'assets/memory.svg',
                         width: screenWidth * 0.05,
                         height: screenWidth * 0.05,
-                        color: isDarkTheme ? Colors.white70 : Colors.black54,
+                        color: AppColors.quinaryColor,
                       ),
                       SizedBox(width: screenWidth * 0.02),
                       Text(
                         '${localizations.ram}: ${widget.ram}',
                         style: GoogleFonts.poppins(
-                          color: isDarkTheme ? Colors.white70 : Colors.black87,
-                          fontSize: screenWidth * 0.04, // %4 font
+                          color: AppColors.quinaryColor,
+                          fontSize: screenWidth * 0.04,
                         ),
                       ),
                     ],
@@ -490,14 +402,14 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
                         'assets/parameter.svg',
                         width: screenWidth * 0.05,
                         height: screenWidth * 0.05,
-                        color: isDarkTheme ? Colors.white70 : Colors.black54,
+                        color: AppColors.quinaryColor,
                       ),
                       SizedBox(width: screenWidth * 0.02),
                       Text(
                         '${localizations.parameters}: ${widget.parameters}',
                         style: GoogleFonts.poppins(
-                          color: isDarkTheme ? Colors.white70 : Colors.black87,
-                          fontSize: screenWidth * 0.04, // %4 font
+                          color: AppColors.quinaryColor,
+                          fontSize: screenWidth * 0.04,
                         ),
                       ),
                     ],
@@ -512,14 +424,14 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
                         'assets/context.svg',
                         width: screenWidth * 0.05,
                         height: screenWidth * 0.05,
-                        color: isDarkTheme ? Colors.white70 : Colors.black54,
+                        color: AppColors.quinaryColor,
                       ),
                       SizedBox(width: screenWidth * 0.02),
                       Text(
                         '${localizations.context}: ${widget.context}',
                         style: GoogleFonts.poppins(
-                          color: isDarkTheme ? Colors.white70 : Colors.black87,
-                          fontSize: screenWidth * 0.04, // %4 font
+                          color: AppColors.quinaryColor,
+                          fontSize: screenWidth * 0.04,
                         ),
                       ),
                     ],
@@ -533,8 +445,8 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
     );
   }
 
-  // -- SHIMMER EKRANI --
-  Widget _buildShimmerScreen(bool isDarkTheme, double screenWidth, double screenHeight, {required Key key}) {
+  Widget _buildShimmerScreen(double screenWidth, double screenHeight,
+      {required Key key, required bool isDarkTheme}) {
     return SingleChildScrollView(
       key: key,
       padding: EdgeInsets.all(screenWidth * 0.04),
@@ -545,14 +457,12 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Image Placeholder
               Shimmer.fromColors(
-                baseColor: isDarkTheme ? Colors.grey[800]! : Colors.grey[300]!,
-                highlightColor:
-                isDarkTheme ? Colors.grey[700]! : Colors.grey[100]!,
+                baseColor: AppColors.shimmerBase,
+                highlightColor: AppColors.shimmerHighlight,
                 child: Container(
-                  width: screenWidth * 0.3, // %30 genişlik
-                  height: screenWidth * 0.3, // Oran koruması
+                  width: screenWidth * 0.3,
+                  height: screenWidth * 0.3,
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(screenWidth * 0.04),
@@ -560,17 +470,13 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
                 ),
               ),
               SizedBox(width: screenWidth * 0.05),
-              // Text Placeholders
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Title Placeholder
                     Shimmer.fromColors(
-                      baseColor:
-                      isDarkTheme ? Colors.grey[800]! : Colors.grey[300]!,
-                      highlightColor:
-                      isDarkTheme ? Colors.grey[700]! : Colors.grey[100]!,
+                      baseColor: AppColors.shimmerBase,
+                      highlightColor: AppColors.shimmerHighlight,
                       child: Container(
                         width: screenWidth * 0.5,
                         height: screenWidth * 0.05,
@@ -581,12 +487,9 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
                       ),
                     ),
                     SizedBox(height: screenWidth * 0.02),
-                    // Producer Placeholder
                     Shimmer.fromColors(
-                      baseColor:
-                      isDarkTheme ? Colors.grey[800]! : Colors.grey[300]!,
-                      highlightColor:
-                      isDarkTheme ? Colors.grey[700]! : Colors.grey[100]!,
+                      baseColor: AppColors.shimmerBase,
+                      highlightColor: AppColors.shimmerHighlight,
                       child: Container(
                         width: screenWidth * 0.4,
                         height: screenWidth * 0.04,
@@ -597,12 +500,9 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
                       ),
                     ),
                     SizedBox(height: screenWidth * 0.02),
-                    // Another line
                     Shimmer.fromColors(
-                      baseColor:
-                      isDarkTheme ? Colors.grey[800]! : Colors.grey[300]!,
-                      highlightColor:
-                      isDarkTheme ? Colors.grey[700]! : Colors.grey[100]!,
+                      baseColor: AppColors.shimmerBase,
+                      highlightColor: AppColors.shimmerHighlight,
                       child: Container(
                         width: double.infinity,
                         height: screenWidth * 0.04,
@@ -615,10 +515,8 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
                     ),
                     SizedBox(height: screenWidth * 0.02),
                     Shimmer.fromColors(
-                      baseColor:
-                      isDarkTheme ? Colors.grey[800]! : Colors.grey[300]!,
-                      highlightColor:
-                      isDarkTheme ? Colors.grey[700]! : Colors.grey[100]!,
+                      baseColor: AppColors.shimmerBase,
+                      highlightColor: AppColors.shimmerHighlight,
                       child: Container(
                         width: double.infinity,
                         height: screenWidth * 0.04,
@@ -634,8 +532,6 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
             ],
           ),
           SizedBox(height: screenHeight * 0.02),
-
-          // Description Placeholder
           _buildShimmerSectionPlaceholder(
             isDarkTheme: isDarkTheme,
             lineCount: 3,
@@ -643,8 +539,6 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
             screenWidth: screenWidth,
           ),
           SizedBox(height: screenHeight * 0.02),
-
-          // Ratings Section Placeholder
           _buildShimmerSectionPlaceholder(
             isDarkTheme: isDarkTheme,
             title: true,
@@ -653,8 +547,6 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
             screenWidth: screenWidth,
           ),
           SizedBox(height: screenWidth * 0.02),
-
-          // Features Section Placeholder
           _buildShimmerSectionPlaceholder(
             isDarkTheme: isDarkTheme,
             title: true,
@@ -679,8 +571,8 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
     if (title) {
       children.add(
         Shimmer.fromColors(
-          baseColor: isDarkTheme ? Colors.grey[800]! : Colors.grey[300]!,
-          highlightColor: isDarkTheme ? Colors.grey[700]! : Colors.grey[100]!,
+          baseColor: AppColors.shimmerBase,
+          highlightColor: AppColors.shimmerHighlight,
           child: Container(
             width: screenWidth * 0.5,
             height: screenWidth * 0.05,
@@ -696,8 +588,8 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
     for (int i = 0; i < lineCount; i++) {
       children.add(
         Shimmer.fromColors(
-          baseColor: isDarkTheme ? Colors.grey[800]! : Colors.grey[300]!,
-          highlightColor: isDarkTheme ? Colors.grey[700]! : Colors.grey[100]!,
+          baseColor: AppColors.shimmerBase,
+          highlightColor: AppColors.shimmerHighlight,
           child: Container(
             width: double.infinity,
             height: height,
@@ -718,10 +610,8 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
     );
   }
 
-  // -- BOTTOM ACTION BUTTONS --
   Widget _buildBottomActionButtons(
       AppLocalizations localizations, bool isDarkTheme, double screenWidth, double screenHeight) {
-    // Eğer server-side model ise, tek buton "Chat" olacak
     if (widget.isServerSide) {
       return Container(
         padding: EdgeInsets.symmetric(
@@ -729,7 +619,7 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
           vertical: screenHeight * 0.01,
         ),
         decoration: BoxDecoration(
-          color: isDarkTheme ? const Color(0xFF1C1C1C) : Colors.white,
+          color: AppColors.quaternaryColor, // Renk güncellendi
           boxShadow: [
             BoxShadow(
               color: Colors.black12,
@@ -743,12 +633,9 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
           ),
         ),
         child: ElevatedButton(
-          onPressed: widget.onChatPressed == null
-              ? null
-              : () => _handleButtonPress(_startChatWithModel),
+          onPressed: widget.onChatPressed == null ? null : () => _startChatWithModel(),
           style: ElevatedButton.styleFrom(
-            backgroundColor:
-            isDarkTheme ? const Color(0xFF0D31FE) : const Color(0xFF0D62FE),
+            backgroundColor: AppColors.senaryColor,
             padding: EdgeInsets.symmetric(vertical: screenHeight * 0.015),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(screenWidth * 0.03),
@@ -758,21 +645,20 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
             localizations.chat,
             style: TextStyle(
               color: Colors.white,
-              fontSize: screenWidth * 0.04, // %4 font
+              fontSize: screenWidth * 0.04,
             ),
           ),
         ),
       );
     }
 
-    // Lokal model ise, "Download/Cancel" veya "Remove/Chat"
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: screenWidth * 0.04,
         vertical: screenHeight * 0.01,
       ),
       decoration: BoxDecoration(
-        color: isDarkTheme ? const Color(0xFF1C1C1C) : Colors.white,
+        color: AppColors.quaternaryColor,
         boxShadow: [
           BoxShadow(
             color: Colors.black12,
@@ -787,9 +673,8 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
       ),
       child: AnimatedSwitcher(
         duration: const Duration(milliseconds: 300),
-        transitionBuilder: (child, animation) {
-          return FadeTransition(opacity: animation, child: child);
-        },
+        transitionBuilder: (child, animation) =>
+            FadeTransition(opacity: animation, child: child),
         layoutBuilder: (currentChild, previousChildren) {
           return Stack(
             alignment: Alignment.center,
@@ -806,79 +691,66 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
     );
   }
 
-  // -- DOWNLOAD or CANCEL --
   Widget _buildDownloadOrCancelButtons(
       AppLocalizations localizations, bool isDarkTheme, double screenWidth, double screenHeight) {
-    return _isDownloading
-        ? Row(
-      key: const ValueKey('cancel'),
+    return Row(
+      key: ValueKey(_isDownloading ? 'cancel' : 'download'),
       children: [
         Expanded(
-          child: ElevatedButton(
-            onPressed: widget.onCancelPressed == null
-                ? null
-                : () {
-              _handleButtonPress(() {
+          child: _isDownloading
+              ? AnimatedCancelButton(
+            key: const ValueKey('cancelButton'),
+            onPressed: () {
+              if (widget.onCancelPressed != null) {
                 widget.onCancelPressed!();
                 setState(() {
                   _isDownloading = false;
                 });
-              });
+              }
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.redAccent,
-              padding: EdgeInsets.symmetric(vertical: screenHeight * 0.015),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(screenWidth * 0.03),
-              ),
-            ),
-            child: Text(
-              localizations.cancel,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: screenWidth * 0.04, // %4 font
-              ),
-            ),
-          ),
-        ),
-      ],
-    )
-        : Row(
-      key: const ValueKey('download'),
-      children: [
-        Expanded(
-          child: ElevatedButton(
-            onPressed: widget.compatibilityStatus !=
-                CompatibilityStatus.compatible ||
+            width: double.infinity,
+            height: screenHeight * 0.058,
+            borderRadius: screenWidth * 0.03,
+            borderColor: AppColors.opposedPrimaryColor,
+            text: localizations.cancel,
+            fontSize: screenWidth * 0.04,
+            strokeFactor: 0.004,
+          )
+              : ElevatedButton(
+            onPressed: widget.compatibilityStatus != CompatibilityStatus.compatible ||
                 widget.onDownloadPressed == null
                 ? null
                 : () {
-              _handleButtonPress(() {
-                widget.onDownloadPressed!();
-                setState(() {
-                  _isDownloading = true;
-                });
+              if (_isButtonLocked) return;
+              setState(() {
+                _isButtonLocked = true;
+                _isDownloading = true;
+              });
+              widget.onDownloadPressed!();
+              Future.delayed(const Duration(seconds: 1), () {
+                if (mounted) {
+                  setState(() {
+                    _isButtonLocked = false;
+                  });
+                }
               });
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor:
-              isDarkTheme ? Colors.white : Colors.black,
+              backgroundColor: AppColors.opposedPrimaryColor,
               padding: EdgeInsets.symmetric(vertical: screenHeight * 0.015),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(screenWidth * 0.03),
               ),
             ),
             child: Text(
-              widget.compatibilityStatus ==
-                  CompatibilityStatus.insufficientRAM
+              widget.compatibilityStatus == CompatibilityStatus.insufficientRAM
                   ? localizations.insufficientRAM
-                  : widget.compatibilityStatus ==
-                  CompatibilityStatus.insufficientStorage
+                  : widget.compatibilityStatus == CompatibilityStatus.insufficientStorage
                   ? localizations.insufficientStorage
                   : localizations.download,
               style: TextStyle(
-                color: isDarkTheme ? Colors.black : Colors.white,
-                fontSize: screenWidth * 0.04, // %4 font
+                color: AppColors.primaryColor,
+                fontSize: screenWidth * 0.04,
               ),
             ),
           ),
@@ -887,7 +759,6 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
     );
   }
 
-  // -- REMOVE ve CHAT butonları --
   Widget _buildRemoveOrChatButtons(
       AppLocalizations localizations, bool isDarkTheme, double screenWidth) {
     return Row(
@@ -897,7 +768,7 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
           child: ElevatedButton(
             onPressed: widget.onRemovePressed == null ? null : _removeModel,
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.redAccent,
+              backgroundColor: AppColors.warning,
               padding: EdgeInsets.symmetric(vertical: screenWidth * 0.04),
               minimumSize: Size(double.infinity, screenWidth * 0.1),
               shape: RoundedRectangleBorder(
@@ -908,7 +779,7 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
               localizations.remove,
               style: TextStyle(
                 color: Colors.white,
-                fontSize: screenWidth * 0.04, // %4 font
+                fontSize: screenWidth * 0.04,
               ),
             ),
           ),
@@ -916,11 +787,9 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
         SizedBox(width: screenWidth * 0.04),
         Expanded(
           child: ElevatedButton(
-            onPressed:
-            widget.onChatPressed == null ? null : _startChatWithModel,
+            onPressed: widget.onChatPressed == null ? null : _startChatWithModel,
             style: ElevatedButton.styleFrom(
-              backgroundColor:
-              isDarkTheme ? const Color(0xFF0D31FE) : const Color(0xFF0D62FE),
+              backgroundColor: AppColors.senaryColor,
               padding: EdgeInsets.symmetric(vertical: screenWidth * 0.04),
               minimumSize: Size(double.infinity, screenWidth * 0.1),
               shape: RoundedRectangleBorder(
@@ -931,7 +800,7 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
               localizations.chat,
               style: TextStyle(
                 color: Colors.white,
-                fontSize: screenWidth * 0.04, // %4 font
+                fontSize: screenWidth * 0.04,
               ),
             ),
           ),
@@ -940,7 +809,6 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
     );
   }
 
-  // -- AÇIKLAMA (DESCRIPTION) BÖLÜMÜ --
   Widget _buildDescriptionSection(
       AppLocalizations localizations, bool isDarkTheme, double screenWidth) {
     return _buildSectionContainer(
@@ -952,8 +820,8 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
           Text(
             widget.description,
             style: TextStyle(
-              color: isDarkTheme ? Colors.white70 : Colors.black87,
-              fontSize: screenWidth * 0.04, // %4 font
+              color: AppColors.quinaryColor,
+              fontSize: screenWidth * 0.04,
               height: 1.6,
             ),
           ),
@@ -964,7 +832,6 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
     );
   }
 
-  // -- YILDIZLAR / PUANLAMA BÖLÜMÜ --
   Widget _buildRatingsSection(
       AppLocalizations localizations, bool isDarkTheme, double screenWidth) {
     return _buildSectionContainer(
@@ -991,15 +858,13 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
       return Text(
         AppLocalizations.of(context)!.noRatingDataFound,
         style: TextStyle(
-          color: isDarkTheme ? Colors.white70 : Colors.black87,
-          fontSize: screenWidth * 0.04, // %4 font
+          color: AppColors.quinaryColor,
+          fontSize: screenWidth * 0.04,
         ),
       );
     }
-    final int totalCount = _starCounts.values.isNotEmpty
-        ? _starCounts.values.reduce((a, b) => a + b)
-        : 1;
-
+    final int totalCount =
+    _starCounts.values.isNotEmpty ? _starCounts.values.reduce((a, b) => a + b) : 1;
     final List<int> starOrder = [5, 4, 3, 2, 1];
     return Column(
       children: starOrder.map((star) {
@@ -1016,13 +881,13 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
                     'assets/star.svg',
                     width: screenWidth * 0.06,
                     height: screenWidth * 0.06,
-                    color: isDarkTheme ? Colors.white : Colors.black,
+                    color: AppColors.opposedPrimaryColor,
                   ),
                   Text(
                     '$star',
                     style: TextStyle(
-                      color: isDarkTheme ? Colors.black : Colors.white,
-                      fontSize: screenWidth * 0.03, // %3 font
+                      color: AppColors.primaryColor,
+                      fontSize: screenWidth * 0.03,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -1034,12 +899,10 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
                   borderRadius: BorderRadius.circular(screenWidth * 0.02),
                   child: LinearProgressIndicator(
                     value: ratio,
-                    minHeight: screenWidth * 0.02, // %2 height
-                    backgroundColor: isDarkTheme
-                        ? Colors.white12
-                        : Colors.grey.shade300,
+                    minHeight: screenWidth * 0.02,
+                    backgroundColor: AppColors.border,
                     valueColor: AlwaysStoppedAnimation<Color>(
-                      isDarkTheme ? Colors.white : Colors.black,
+                      AppColors.opposedPrimaryColor,
                     ),
                   ),
                 ),
@@ -1051,7 +914,6 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
     );
   }
 
-  // -- ÖZELLİKLER BÖLÜMÜ --
   Widget _buildFeaturesSection(
       AppLocalizations localizations, bool isDarkTheme, double screenWidth) {
     if (_parsedFeatures.isEmpty) {
@@ -1073,9 +935,7 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
     List<Widget> items = [];
     for (int i = 0; i < _parsedFeatures.length; i++) {
       final featureKey = _parsedFeatures[i];
-      if (!featureTitles.containsKey(featureKey)) {
-        continue;
-      }
+      if (!featureTitles.containsKey(featureKey)) continue;
       items.add(
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1083,8 +943,8 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
             Text(
               featureTitles[featureKey] ?? '',
               style: TextStyle(
-                color: isDarkTheme ? Colors.white : Colors.black,
-                fontSize: screenWidth * 0.04, // %4 font
+                color: AppColors.opposedPrimaryColor,
+                fontSize: screenWidth * 0.04,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -1092,8 +952,8 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
             Text(
               featureDescriptions[featureKey] ?? '',
               style: TextStyle(
-                color: isDarkTheme ? Colors.white70 : Colors.black87,
-                fontSize: screenWidth * 0.035, // %3.5 font
+                color: AppColors.quinaryColor,
+                fontSize: screenWidth * 0.035,
               ),
             ),
           ],
@@ -1103,7 +963,7 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
         items.add(SizedBox(height: screenWidth * 0.02));
         items.add(
           Divider(
-            color: isDarkTheme ? Colors.grey[700] : Colors.grey[300],
+            color: AppColors.border,
             thickness: 1,
           ),
         );
@@ -1146,8 +1006,8 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
     return Text(
       sectionTitle,
       style: TextStyle(
-        color: isDarkTheme ? Colors.white : Colors.black,
-        fontSize: screenWidth * 0.05, // %5 font
+        color: AppColors.opposedPrimaryColor,
+        fontSize: screenWidth * 0.05,
         fontWeight: FontWeight.w600,
       ),
     );
@@ -1156,10 +1016,10 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
   Widget _buildSectionContainer(Widget child, bool isDarkTheme, double screenWidth) {
     return Container(
       decoration: BoxDecoration(
-        color: isDarkTheme ? const Color(0xFF1C1C1C) : Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(screenWidth * 0.04), // Dinamik border radius
+        color: AppColors.quaternaryColor,
+        borderRadius: BorderRadius.circular(screenWidth * 0.04),
       ),
-      padding: EdgeInsets.all(screenWidth * 0.04), // %4 padding
+      padding: EdgeInsets.all(screenWidth * 0.04),
       child: child,
     );
   }

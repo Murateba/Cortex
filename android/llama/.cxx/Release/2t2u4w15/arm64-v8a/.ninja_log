@@ -26,3 +26,9 @@
 584	967	1738499147909369929	/home/baba/Documents/cortex/build/llama/intermediates/cxx/Release/2t2u4w15/obj/arm64-v8a/libllama.so	7dbd4d2bbeb813fc
 967	1013	1738499147971369020	llama_build/common/libcommon.a	8c2b97b50920e2b0
 1013	1160	1738499148118366865	/home/baba/Documents/cortex/build/llama/intermediates/cxx/Release/2t2u4w15/obj/arm64-v8a/libai.so	64c9025efb20a1f1
+2	90	1739644774204210974	/home/baba/Documents/cortex/build/llama/intermediates/cxx/Release/2t2u4w15/obj/arm64-v8a/libggml.so	86d1789d4d76c01b
+90	167	1739644774281209821	/home/baba/Documents/cortex/build/llama/intermediates/cxx/Release/2t2u4w15/obj/arm64-v8a/libllama.so	7dbd4d2bbeb813fc
+167	201	1739644774317209283	/home/baba/Documents/cortex/build/llama/intermediates/cxx/Release/2t2u4w15/obj/arm64-v8a/libai.so	64c9025efb20a1f1
+10	99	1739646272472905109	/home/baba/Documents/cortex/build/llama/intermediates/cxx/Release/2t2u4w15/obj/arm64-v8a/libggml.so	86d1789d4d76c01b
+99	169	1739646272539904115	/home/baba/Documents/cortex/build/llama/intermediates/cxx/Release/2t2u4w15/obj/arm64-v8a/libllama.so	7dbd4d2bbeb813fc
+169	208	1739646272580903506	/home/baba/Documents/cortex/build/llama/intermediates/cxx/Release/2t2u4w15/obj/arm64-v8a/libai.so	64c9025efb20a1f1

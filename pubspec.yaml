@@ -3,7 +3,7 @@ description: "Vertex of Artificial Intelligence"
 
 publish_to: 'none'
 
-version: 0.8.56+56
+version: 0.8.76+63
 
 environment:
   sdk: '>=3.4.3 <4.0.0'
@@ -44,6 +44,7 @@ dependencies:
   flutter_math_fork: ^0.7.2
   flutter_svg: ^2.0.15
   collection: ^1.18.0
+  mutex: ^3.1.0
   http: any
   path: any
   fl_chart: ^0.70.2
@@ -52,6 +53,8 @@ dependencies:
   highlight: any
   share_plus: ^10.1.4
   gallery_saver_plus: ^3.2.1
+  in_app_purchase_android: ^0.4.0
+  flutter_local_notifications: ^18.0.1
 
 dev_dependencies:
   flutter_test:
@@ -81,7 +84,7 @@ flutter:
     - assets/hermes.jpg
     - assets/chat.svg
     - assets/sound.svg
-    - assets/deleteConversation.svg
+    - assets/delete.svg
     - assets/editConversationTitle.svg
     - assets/starConversation.svg
     - assets/copy.svg
@@ -126,4 +129,13 @@ flutter:
     - assets/theme.svg
     - assets/plus.svg
     - assets/arrov.svg
+    - assets/deepseek.jpeg
+    - assets/starBordered.svg
+    - assets/checkmark.svg
+    - assets/extension.svg
+    - assets/grok.jpeg
+    - assets/stop.svg
+    - assets/copyrights.svg
+    - assets/arrow.svg
+    - assets/lock.svg
     - .env

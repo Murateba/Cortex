@@ -1,5 +1,6 @@
 // messages.dart
 
+import 'package:cortex/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_svg/svg.dart';
@@ -7,7 +8,7 @@ import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'chat.dart';
-import 'notifications.dart';
+import '../notifications.dart';
 import 'parser.dart';
 import 'options.dart'; // Import to use MessageOption enum
 
@@ -16,14 +17,12 @@ import 'options.dart'; // Import to use MessageOption enum
 // --------------------------------------------------
 class UserMessageTile extends StatefulWidget {
   final String text;
-  final bool isDarkTheme;
   final bool shouldFadeOut;
   final VoidCallback? onFadeOutComplete;
 
   const UserMessageTile({
     Key? key,
     required this.text,
-    required this.isDarkTheme,
     required this.shouldFadeOut,
     this.onFadeOutComplete,
   }) : super(key: key);
@@ -76,7 +75,6 @@ class _UserMessageTileState extends State<UserMessageTile>
       context: context,
       tapPosition: tapPosition,
       messageText: widget.text,
-      isDarkTheme: widget.isDarkTheme,
       options: [MessageOption.copy, MessageOption.select],
     );
   }
@@ -109,9 +107,7 @@ class _UserMessageTileState extends State<UserMessageTile>
                 color: Colors.transparent,
                 child: Ink(
                   decoration: BoxDecoration(
-                    color: widget.isDarkTheme
-                        ? const Color(0xFF141414)
-                        : Colors.grey[200],
+                    color: AppColors.secondaryColor,
                     borderRadius: BorderRadius.circular(24),
                   ),
                   child: InkWell(
@@ -125,7 +121,7 @@ class _UserMessageTileState extends State<UserMessageTile>
                       child: Text(
                         widget.text,
                         style: TextStyle(
-                          color: widget.isDarkTheme ? Colors.white : Colors.black,
+                          color: AppColors.opposedPrimaryColor,
                           fontSize: 16,
                         ),
                       ),
@@ -147,7 +143,6 @@ class _UserMessageTileState extends State<UserMessageTile>
 class AIMessageTile extends StatefulWidget {
   final String text;
   final String imagePath;
-  final bool isDarkTheme;
   final bool shouldFadeOut;
   final VoidCallback? onFadeOutComplete;
   final String modelId;
@@ -155,12 +150,12 @@ class AIMessageTile extends StatefulWidget {
   final VoidCallback? onReport;
   final VoidCallback? onRegenerate;
   final List<InlineSpan>? parsedSpans;
+  final VoidCallback? onStop;
 
   const AIMessageTile({
     Key? key,
     required this.text,
     required this.imagePath,
-    required this.isDarkTheme,
     required this.shouldFadeOut,
     required this.modelId,
     this.onFadeOutComplete,
@@ -168,6 +163,7 @@ class AIMessageTile extends StatefulWidget {
     this.onReport,
     this.onRegenerate,
     this.parsedSpans,
+    this.onStop,
   }) : super(key: key);
 
   @override
@@ -217,7 +213,7 @@ class _AIMessageTileState extends State<AIMessageTile>
     // Başlangıç:
     _displayedText = widget.text;
     _displayedSpans =
-        widget.parsedSpans ?? parseText(_displayedText, widget.isDarkTheme);
+        widget.parsedSpans ?? parseText(_displayedText);
 
     if (widget.shouldFadeOut) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -264,7 +260,7 @@ class _AIMessageTileState extends State<AIMessageTile>
     if (newText.length < oldText.length) {
       setState(() {
         _displayedText = newText;
-        _displayedSpans = parseText(_displayedText, widget.isDarkTheme);
+        _displayedSpans = parseText(_displayedText);
         _animatingChunk = '';
         _animatingSpans.clear();
         _chunkFadeInController.value = 1.0;
@@ -281,18 +277,18 @@ class _AIMessageTileState extends State<AIMessageTile>
       // Hâlâ animasyon devam ediyorsa chunk üzerine ekleyelim
       setState(() {
         _animatingChunk += chunk;
-        _animatingSpans = parseText(_animatingChunk, widget.isDarkTheme);
+        _animatingSpans = parseText(_animatingChunk);
       });
     } else {
       // Yeni chunk animasyonu
       _animatingChunk = chunk;
-      _animatingSpans = parseText(_animatingChunk, widget.isDarkTheme);
+      _animatingSpans = parseText(_animatingChunk);
       _isChunkAnimating = true;
       _chunkFadeInController.reset();
       _chunkFadeInController.forward().whenComplete(() {
         setState(() {
           _displayedText += _animatingChunk;
-          _displayedSpans = parseText(_displayedText, widget.isDarkTheme);
+          _displayedSpans = parseText(_displayedText);
           _animatingChunk = '';
           _animatingSpans.clear();
           _isChunkAnimating = false;
@@ -316,23 +312,29 @@ class _AIMessageTileState extends State<AIMessageTile>
   }
 
   void _handleLongPress(BuildContext context, Offset tapPosition) {
-    // Mesaj opsiyonları menüsünü açıyoruz
+    final localizations = AppLocalizations.of(context)!;
+    List<MessageOption> options = [
+      MessageOption.copy,
+      MessageOption.report,
+      MessageOption.regenerate,
+      MessageOption.select,
+    ];
+
+    if (widget.onStop != null && widget.text == localizations.thinking) {
+      options.add(MessageOption.stop);
+    }
     showMessageOptions(
       context: context,
       tapPosition: tapPosition,
       messageText: widget.text,
-      isDarkTheme: widget.isDarkTheme,
-      options: [
-        MessageOption.copy,
-        MessageOption.report,
-        MessageOption.regenerate,
-        MessageOption.select,
-      ],
+      options: options,
       isReported: widget.isReported,
       onReport: widget.onReport,
       onRegenerate: widget.onRegenerate,
+      onStop: widget.onStop,
     );
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -368,9 +370,7 @@ class _AIMessageTileState extends State<AIMessageTile>
                   onTap: () => FocusScope.of(context).unfocus(),
                   onLongPress: () => _handleLongPress(context, Offset.zero),
                   borderRadius: BorderRadius.circular(26.0),
-                  splashColor: widget.isDarkTheme
-                      ? Colors.white.withOpacity(0.1)
-                      : Colors.black.withOpacity(0.1),
+                  splashColor: AppColors.opposedPrimaryColor.withOpacity(0.1),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
                         vertical: 8.0, horizontal: 16.0),
@@ -393,16 +393,12 @@ class _AIMessageTileState extends State<AIMessageTile>
                             width: 30,
                             height: 30,
                             decoration: BoxDecoration(
-                              color: widget.isDarkTheme
-                                  ? Colors.grey[700]
-                                  : Colors.grey[300],
+                              color: AppColors.tertiaryColor,
                               borderRadius: BorderRadius.circular(15.0),
                             ),
                             child: Icon(
                               Icons.person,
-                              color: widget.isDarkTheme
-                                  ? Colors.white
-                                  : Colors.black,
+                              color: AppColors.primaryColor,
                               size: 16,
                             ),
                           ),
@@ -423,41 +419,74 @@ class _AIMessageTileState extends State<AIMessageTile>
     );
   }
 
+  List<InlineSpan> _overrideTextColor(
+      List<InlineSpan> originalSpans,
+      Color forcedColor,
+      ) {
+    return originalSpans.map((span) {
+      if (span is TextSpan) {
+        // Çocukları varsa onlar da override edilsin:
+        final newChildren = span.children != null
+            ? _overrideTextColor(span.children!, forcedColor)
+            : null;
+
+        return TextSpan(
+          text: span.text,
+          style: (span.style ?? const TextStyle()).copyWith(color: forcedColor),
+          children: newChildren,
+          recognizer: span.recognizer,
+        );
+      } else {
+        // WidgetSpan vs. ise aynen dön.
+        return span;
+      }
+    }).toList();
+  }
+
   Widget _buildMessageContent(double chunkOpacity) {
     final localizations = AppLocalizations.of(context)!;
 
-    // "Düşünüyor..." shimmer durumu
+    // 1) "Düşünüyor..." durumu
     if (_displayedText == localizations.thinking && !_isChunkAnimating) {
       return Shimmer.fromColors(
-        baseColor: widget.isDarkTheme ? Colors.white : Colors.black,
-        highlightColor:
-        widget.isDarkTheme ? Colors.grey[400]! : Colors.grey[300]!,
+        // Burada da opposedPrimaryColor ve bir highlight rengi seçin
+        baseColor: AppColors.opposedPrimaryColor,
+        highlightColor: AppColors.quaternaryColor,
         child: Text(
           localizations.thinking,
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.bold,
-            color: widget.isDarkTheme ? Colors.white : Colors.black,
+            color: AppColors.opposedPrimaryColor,
           ),
         ),
       );
     }
 
-    // Fade out aşamasındaysak ek animasyona gerek yok
     if (_isFadingOut) {
+      final forcedSpans = _overrideTextColor(
+        parseText(widget.text),
+        AppColors.opposedPrimaryColor,
+      );
       return RichText(
         text: TextSpan(
-          children: parseText(widget.text, widget.isDarkTheme),
+          style: TextStyle(
+            color: AppColors.opposedPrimaryColor,
+            fontSize: 16,
+          ),
+          children: forcedSpans,
         ),
       );
     }
 
-    // Aksi halde chunk animasyonunu birleştirerek göster
+    final forcedDisplayed = _overrideTextColor(_displayedSpans, AppColors.opposedPrimaryColor);
+    final forcedAnimating = _overrideTextColor(_animatingSpans, AppColors.opposedPrimaryColor);
+
     final List<InlineSpan> finalSpans = [];
-    finalSpans.addAll(_displayedSpans);
+    finalSpans.addAll(forcedDisplayed);
 
     if (_animatingChunk.isNotEmpty) {
-      for (var span in _animatingSpans) {
+      for (var span in forcedAnimating) {
         finalSpans.add(
           WidgetSpan(
             child: Opacity(
@@ -471,7 +500,15 @@ class _AIMessageTileState extends State<AIMessageTile>
       }
     }
 
-    return RichText(text: TextSpan(children: finalSpans));
+    return RichText(
+      text: TextSpan(
+        style: TextStyle(
+          color: AppColors.opposedPrimaryColor,
+          fontSize: 16,
+        ),
+        children: finalSpans,
+      ),
+    );
   }
 }
 
@@ -524,7 +561,7 @@ class _SelectTextScreenState extends State<SelectTextScreen>
     super.initState();
     _displayedText = widget.messageNotifier.value;
     final bool isDark = WidgetsBinding.instance.window.platformBrightness == Brightness.dark;
-    _displayedSpans = parseText(_displayedText, isDark);
+    _displayedSpans = parseText(_displayedText);
 
     _fadeOutController = AnimationController(
       vsync: this,
@@ -563,9 +600,16 @@ class _SelectTextScreenState extends State<SelectTextScreen>
     }
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    setState(() {
+      _displayedSpans = parseText(_displayedText);
+    });
+  }
+
   /// Processes the incoming text changes incrementally.
   void _handleIncomingTextChange(String oldText, String newText) {
-    final bool isDarkTheme = Theme.of(context).brightness == Brightness.dark;
     final localizations = AppLocalizations.of(context)!;
 
     // If we are exiting the "thinking" state:
@@ -577,7 +621,7 @@ class _SelectTextScreenState extends State<SelectTextScreen>
     if (newText.length < oldText.length) {
       setState(() {
         _displayedText = newText;
-        _displayedSpans = parseText(_displayedText, isDarkTheme);
+        _displayedSpans = parseText(_displayedText);
         _animatingChunk = '';
         _isChunkAnimating = false;
         _chunkFadeInController.value = 1.0;
@@ -605,7 +649,7 @@ class _SelectTextScreenState extends State<SelectTextScreen>
       _chunkFadeInController.forward().whenComplete(() {
         setState(() {
           _displayedText += _animatingChunk;
-          _displayedSpans = parseText(_displayedText, isDarkTheme);
+          _displayedSpans = parseText(_displayedText);
           _animatingChunk = '';
           _isChunkAnimating = false;
         });
@@ -640,7 +684,7 @@ class _SelectTextScreenState extends State<SelectTextScreen>
           : widget.messageNotifier.value;
       print('Toggled _hideSpecial to $_hideSpecial');
       print('Updated _displayedText: $_displayedText');
-      _displayedSpans = parseText(_displayedText, Theme.of(context).brightness == Brightness.dark);
+      _displayedSpans = parseText(_displayedText);
     });
 
     _fadeOutController.reset();
@@ -787,7 +831,7 @@ class _SelectTextScreenState extends State<SelectTextScreen>
                         ? _stripMarkup(widget.messageNotifier.value)
                         : widget.messageNotifier.value,
                     style: TextStyle(
-                      color: isDarkTheme ? Colors.white : Colors.black,
+                      color: AppColors.opposedPrimaryColor,
                       fontSize: 16,
                     ),
                   ),
@@ -802,7 +846,7 @@ class _SelectTextScreenState extends State<SelectTextScreen>
                   child: SelectableText(
                     _displayedText,
                     style: TextStyle(
-                      color: isDarkTheme ? Colors.white : Colors.black,
+                      color: AppColors.opposedPrimaryColor,
                       fontSize: 16,
                     ),
                   ),
@@ -826,7 +870,7 @@ class _SelectTextScreenState extends State<SelectTextScreen>
                                 opacity: chunkOpacity,
                                 child: RichText(
                                   text: TextSpan(
-                                    children: parseText(_animatingChunk, isDarkTheme),
+                                    children: parseText(_animatingChunk),
                                   ),
                                 ),
                               ),
@@ -834,7 +878,7 @@ class _SelectTextScreenState extends State<SelectTextScreen>
                         ],
                       ),
                       style: TextStyle(
-                        color: isDarkTheme ? Colors.white : Colors.black,
+                        color: AppColors.opposedPrimaryColor,
                         fontSize: 16,
                       ),
                     ),

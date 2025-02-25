@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
 
-import 'theme.dart'; // ThemeProvider'ınızı içe aktardığınızdan emin olun
+import 'theme.dart'; // AppColors ve ThemeProvider burada tanımlı
 
 class SystemInfoChart extends StatefulWidget {
   final int totalStorage; // MB cinsinden toplam depolama
@@ -31,26 +31,22 @@ class _SystemInfoChartState extends State<SystemInfoChart> with SingleTickerProv
   void initState() {
     super.initState();
 
-    // AnimationController'ı başlat
     _animationController = AnimationController(
       duration: const Duration(seconds: 2),
       vsync: this,
     );
 
-    // Depolama ve bellek için Tween'leri başlat
     _storageAnimation = Tween<double>(begin: 0, end: widget.usedStorage.toDouble())
         .animate(CurvedAnimation(parent: _animationController, curve: Curves.easeOut));
 
     _memoryAnimation = Tween<double>(begin: 0, end: widget.usedMemory.toDouble())
         .animate(CurvedAnimation(parent: _animationController, curve: Curves.easeOut));
 
-    // Animasyonu başlat
     _animationController.forward();
   }
 
   @override
   void dispose() {
-    // AnimationController'ı serbest bırak
     _animationController.dispose();
     super.dispose();
   }
@@ -61,57 +57,53 @@ class _SystemInfoChartState extends State<SystemInfoChart> with SingleTickerProv
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
-    // ThemeProvider üzerinden mevcut temayı belirle
-    final isDarkTheme = Provider.of<ThemeProvider>(context).isDarkTheme;
+    // ThemeProvider'dan mevcut temayı al ve AppColors.currentTheme değerini güncelle
+    final themeProvider = Provider.of<ThemeProvider>(context);
+    AppColors.currentTheme = themeProvider.currentTheme;
 
-    final barUsedColor = isDarkTheme ? Color(0xFF0f90d1) : Color(0xFF0ACEF5);
-    final barTotalColor = isDarkTheme ? Color(0xFFa0d0e8) : Color(0xFFABF1FF);
-    final memoryUsedColor = isDarkTheme ? Color(0xFF0fba1c) : Color(0xFF2DF013);
-    final memoryTotalColor = isDarkTheme ? Color(0xFF9fcfac) : Color(0xFFB7F7B9);
-    final dividerColor = isDarkTheme ? Color(0xB3FFFFFF) : Color(0xFF212121);
+    // AppColors üzerinden sistem grafiği için renk değerlerini alıyoruz.
+    final barUsedColor = AppColors.storageUsed;
+    final barTotalColor = AppColors.storageTotal;
+    final memoryUsedColor = AppColors.memoryUsed;
+    final memoryTotalColor = AppColors.memoryTotal;
+    final dividerColor = AppColors.quinaryColor;
 
-    final labelColor = isDarkTheme ? Colors.white : Colors.black;
-
-    // Çubuk boyutlarını tanımla
-    final barHeight = screenHeight * 0.03; // Ekran yüksekliğine göre dinamik boyut
+    // Etiket yazılarının rengi, tema fark etmeksizin kontrast için belirlenebilir.
+    final labelColor = AppColors.opposedPrimaryColor;
+    final barHeight = screenHeight * 0.03;
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start, // Tüm içeriği sola hizala
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Opsiyonel üst boşluk
         SizedBox(height: screenHeight * 0.02),
-
-        // Etiketler ve çubuklar içeren özel yatay çubuk grafik
-        IntrinsicHeight( // Bölücünün dinamik yüksekliğini sağlar
+        IntrinsicHeight(
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start, // Çubukların en üste hizalanmasını sağlar
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Etiketler sütunu
               Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  // Kullanılan Depolama Etiketi (Satır başı için hizalama)
                   Transform.translate(
-                    offset: const Offset(0, -8), // Etiketi yukarı taşı
+                    offset: const Offset(0, -8),
                     child: Text(
-                      localizations.usedStorage.split(' ').join('\n'), // Yerelleştirilmiş metin
+                      localizations.usedStorage.split(' ').join('\n'),
                       style: TextStyle(
-                        fontSize: 12, // Azaltılmış font boyutu
+                        fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: labelColor,
                       ),
                       textAlign: TextAlign.center,
                     ),
                   ),
-                  SizedBox(height: screenHeight * 0.03), // İkinci çubukla hizalamak için artırılmış boşluk
-                  // Kullanılan Bellek Etiketi (Satır başı için hizalama)
+                  SizedBox(height: screenHeight * 0.03),
                   Transform.translate(
-                    offset: const Offset(0, -8), // Etiketi yukarı taşı
+                    offset: const Offset(0, -8),
                     child: Text(
-                      localizations.usedMemory.split(' ').join('\n'), // Yerelleştirilmiş metin
+                      localizations.usedMemory.split(' ').join('\n'),
                       style: TextStyle(
-                        fontSize: 12, // Azaltılmış font boyutu
+                        fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: labelColor,
                       ),
@@ -120,27 +112,19 @@ class _SystemInfoChartState extends State<SystemInfoChart> with SingleTickerProv
                   ),
                 ],
               ),
-
-              // Etiketler ve bölücü arasındaki yatay boşluk
-              SizedBox(width: screenWidth * 0.015), // Dinamik boşluk
-
-              // Yatay bölücü
+              SizedBox(width: screenWidth * 0.015),
               VerticalDivider(
                 width: screenWidth * 0.012,
                 thickness: 1,
                 color: dividerColor,
               ),
-
-              // Bölücü ve çubuklar arasındaki yatay boşluk
-              SizedBox(width: screenWidth * 0.02), // Dinamik boşluk
-
-              // Çubuklar sütunu
+              SizedBox(width: screenWidth * 0.02),
               Expanded(
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.start, // Çubukların üste hizalanmasını sağlar
+                  mainAxisAlignment: MainAxisAlignment.start,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Depolama Çubuğu ile Animasyon
+                    // Depolama çubuğu animasyonu
                     AnimatedBuilder(
                       animation: _animationController,
                       builder: (context, child) {
@@ -160,8 +144,8 @@ class _SystemInfoChartState extends State<SystemInfoChart> with SingleTickerProv
                         );
                       },
                     ),
-                    SizedBox(height: screenHeight * 0.015), // Dinamik boşluk
-                    // Bellek Çubuğu ile Animasyon
+                    SizedBox(height: screenHeight * 0.015),
+                    // Bellek çubuğu animasyonu
                     AnimatedBuilder(
                       animation: _animationController,
                       builder: (context, child) {
@@ -187,9 +171,7 @@ class _SystemInfoChartState extends State<SystemInfoChart> with SingleTickerProv
             ],
           ),
         ),
-
-        // Opsiyonel alt boşluk
-        SizedBox(height: screenHeight * 0.02), // Dinamik boşluk
+        SizedBox(height: screenHeight * 0.02),
       ],
     );
   }
@@ -208,10 +190,9 @@ class _SystemInfoChartState extends State<SystemInfoChart> with SingleTickerProv
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Çubuk konteyneri ile animasyonlu genişlik
+        // Animasyonlu çubuk
         Stack(
           children: [
-            // Toplam Kapasite Arka Planı
             Container(
               width: double.infinity,
               height: height,
@@ -220,7 +201,6 @@ class _SystemInfoChartState extends State<SystemInfoChart> with SingleTickerProv
                 borderRadius: BorderRadius.circular(8),
               ),
             ),
-            // Kullanılan Kapasite Ön Planı ile animasyonlu genişlik
             FractionallySizedBox(
               widthFactor: usedWidthFactor.clamp(0.0, 1.0),
               child: Container(
@@ -233,22 +213,22 @@ class _SystemInfoChartState extends State<SystemInfoChart> with SingleTickerProv
             ),
           ],
         ),
-        SizedBox(height: height * 0.166), // Dinamik boşluk (4/24 = 1/6)
-        // Kullanılan değer dinamik gösterimi
+        SizedBox(height: height * 0.166),
+        // Değer ve yüzde bilgisi
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
               '${usedValue.toInt()} | ${totalValue.toInt()} MB',
               style: TextStyle(
-                fontSize: height * 0.416, // Dinamik font boyutu (10/24 ≈ 0.416)
+                fontSize: height * 0.416,
                 fontWeight: FontWeight.w500,
               ),
             ),
             Text(
               '${percentage.toStringAsFixed(1)}%',
               style: TextStyle(
-                fontSize: height * 0.416, // Dinamik font boyutu (10/24 ≈ 0.416)
+                fontSize: height * 0.416,
                 fontWeight: FontWeight.w500,
                 color: Colors.grey,
               ),

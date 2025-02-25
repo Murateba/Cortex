@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 import 'chat.dart';
-import 'theme.dart';
+import '../theme.dart';
 
 class ReportDialog extends StatefulWidget {
   final String aiMessage;
@@ -37,18 +37,14 @@ class _ReportDialogState extends State<ReportDialog>
   @override
   void initState() {
     super.initState();
-
     // 200 ms'lik fade-in animasyonu ayarla.
     _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 200),
     );
-
     _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _animationController, curve: Curves.easeIn),
     );
-
-    // Animasyonu başlat
     _animationController.forward();
   }
 
@@ -62,26 +58,22 @@ class _ReportDialogState extends State<ReportDialog>
   @override
   Widget build(BuildContext context) {
     final localizations = AppLocalizations.of(context)!;
-    final isDarkTheme = Provider.of<ThemeProvider>(context).isDarkTheme;
 
-    // Temaya göre renkleri belirle
-    final backgroundColor = isDarkTheme ? const Color(0xFF141414) : Colors.white;
-    final titleColor = isDarkTheme ? Colors.white : Colors.black;
-    final subtitleColor = isDarkTheme ? Colors.white70 : Colors.grey[800];
-    final borderColor = isDarkTheme ? Colors.white54 : Colors.black26;
-    final fillColor = isDarkTheme ? Colors.grey[900] : Colors.grey[100];
-    final checkActiveColor = isDarkTheme ? Colors.white : Colors.black;
-    final checkCheckColor = isDarkTheme ? Colors.black : Colors.white;
-    final closeButtonColor =
-    isDarkTheme ? Colors.grey[900]! : Colors.grey[200]!;
-    final closeButtonTextColor = isDarkTheme ? Colors.white : Colors.black;
+    final backgroundColor = AppColors.background;
+    final titleColor = AppColors.opposedPrimaryColor;
+    final subtitleColor = AppColors.opposedPrimaryColor.withOpacity(0.4);
+    final borderColor = AppColors.dialogBorder;
+    final fillColor = AppColors.dialogFill;
+    final checkActiveColor = AppColors.opposedPrimaryColor;
+    final checkCheckColor = AppColors.primaryColor;
+    final closeButtonColor = AppColors.dialogCloseButtonBackground;
+    final closeButtonTextColor = AppColors.opposedPrimaryColor;
 
     return FadeTransition(
       opacity: _fadeAnimation,
       child: Dialog(
         backgroundColor: backgroundColor,
         insetPadding: const EdgeInsets.all(16.0),
-        // Klavye kapatma işlemi için GestureDetector
         child: GestureDetector(
           onTap: () {
             FocusScope.of(context).unfocus();
@@ -98,7 +90,7 @@ class _ReportDialogState extends State<ReportDialog>
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Title
+                    // Başlık
                     Text(
                       localizations.reportDialogTitle,
                       style: TextStyle(
@@ -108,7 +100,7 @@ class _ReportDialogState extends State<ReportDialog>
                       ),
                     ),
                     const SizedBox(height: 12.0),
-                    // Description TextField
+                    // Açıklama TextField'i
                     TextField(
                       controller: _descriptionController,
                       maxLength: 150,
@@ -130,7 +122,7 @@ class _ReportDialogState extends State<ReportDialog>
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(8.0),
                           borderSide: BorderSide(
-                            color: isDarkTheme ? Colors.white : Colors.black,
+                            color: titleColor,
                           ),
                         ),
                         counterStyle: TextStyle(color: subtitleColor),
@@ -234,7 +226,7 @@ class _ReportDialogState extends State<ReportDialog>
                       ],
                     ),
                     const SizedBox(height: 16.0),
-                    // Animated Error Message
+                    // Hata Mesajı (Animasyonlu)
                     AnimatedOpacity(
                       opacity: _showError ? 1.0 : 0.0,
                       duration: const Duration(milliseconds: 300),
@@ -251,11 +243,11 @@ class _ReportDialogState extends State<ReportDialog>
                       )
                           : const SizedBox.shrink(),
                     ),
-                    // Buttons
+                    // Butonlar
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        // Close Button
+                        // Kapat Butonu
                         ElevatedButton(
                           onPressed: () => Navigator.of(context).pop(),
                           style: ElevatedButton.styleFrom(
@@ -279,7 +271,7 @@ class _ReportDialogState extends State<ReportDialog>
                           ),
                         ),
                         const SizedBox(width: 8.0),
-                        // Submit Button
+                        // Gönder Butonu
                         ElevatedButton(
                           onPressed: () async {
                             if (_selectedSubject == 0) {
@@ -288,12 +280,11 @@ class _ReportDialogState extends State<ReportDialog>
                               });
                             } else {
                               await _submitReport();
-                              Navigator.of(context).pop(); // Dialogu kapat
+                              Navigator.of(context).pop();
                             }
                           },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor:
-                            isDarkTheme ? Colors.white : Colors.black,
+                            backgroundColor: AppColors.opposedPrimaryColor,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(20.0),
                             ),
@@ -310,7 +301,7 @@ class _ReportDialogState extends State<ReportDialog>
                           child: Text(
                             localizations.submitButton,
                             style: TextStyle(
-                              color: isDarkTheme ? Colors.black : Colors.white,
+                              color: AppColors.primaryColor,
                             ),
                           ),
                         ),
@@ -328,9 +319,7 @@ class _ReportDialogState extends State<ReportDialog>
 
   Future<void> _submitReport() async {
     final currentUser = FirebaseAuth.instance.currentUser;
-    if (currentUser == null) {
-      return;
-    }
+    if (currentUser == null) return;
 
     final reporterUid = currentUser.uid;
     final description = _descriptionController.text.trim();
@@ -338,7 +327,6 @@ class _ReportDialogState extends State<ReportDialog>
     final modelId = widget.modelId;
     final subject = _selectedSubject;
 
-    // Firestore'a yaz
     await FirebaseFirestore.instance.collection('reports').add({
       'messageText': messageText,
       'reporterUid': reporterUid,
@@ -348,7 +336,6 @@ class _ReportDialogState extends State<ReportDialog>
       'timestamp': FieldValue.serverTimestamp(),
     });
 
-    // ChatScreenState bul ve isReported = true yap
     final chatState = context.findAncestorStateOfType<ChatScreenState>();
     if (chatState != null) {
       chatState.markMessageAsReported(messageText);

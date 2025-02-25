@@ -20,34 +20,25 @@ class ApiService {
   final AppLocalizations localizations;
 
   bool _isCancelled = false;
-
-  /// (1) This client will be used to make requests.
   http.Client? _client;
 
   ApiService({required this.localizations});
 
-  /// Cancels any ongoing API requests by closing the underlying [http.Client].
   void cancelRequests() {
     _isCancelled = true;
-    // (2) Close the client if it exists
     _client?.close();
     _client = null;
   }
 
-  /// Helper method to get MIME type and validate supported types
   Future<String?> _getMimeType(String filePath) async {
     final mimeType = lookupMimeType(filePath);
     if (mimeType == null) return null;
 
     const supportedTypes = ['image/png', 'image/jpeg', 'image/webp'];
-    if (supportedTypes.contains(mimeType)) {
-      return mimeType;
-    }
-    return null;
+    return supportedTypes.contains(mimeType) ? mimeType : null;
   }
 
-  /// Helper method to format base64 image with content-type prefix
-  Future<String?> _formatBase64Image(String photoPath) async {
+  Future<String?> formatBase64Image(String photoPath) async {
     try {
       File imageFile = File(photoPath);
       if (await imageFile.exists()) {
@@ -78,11 +69,11 @@ class ApiService {
     int maxRetries = 1,
   }) async {
     const String url = "https://openrouter.ai/api/v1/chat/completions";
-    List<Map<String, dynamic>> messages = [];
 
-    // Initialize content list
+    // Mesaj içeriğini liste halinde oluşturuyoruz.
     List<Map<String, dynamic>> contentList = [];
 
+    // Context (örneğin, önceki konuşma) metni:
     if (context.isNotEmpty) {
       contentList.add({
         "type": "text",
@@ -90,6 +81,7 @@ class ApiService {
       });
     }
 
+    // Kullanıcının mevcut girişi:
     if (userInput.isNotEmpty) {
       contentList.add({
         "type": "text",
@@ -97,26 +89,25 @@ class ApiService {
       });
     }
 
-    String? formattedBase64Image;
+    // Eğer fotoğraf varsa, doğru görsel mesaj formatında ekleyelim.
     if (photoPath != null) {
-      formattedBase64Image = await _formatBase64Image(photoPath);
+      String? formattedBase64Image = await formatBase64Image(photoPath);
       if (formattedBase64Image != null) {
         contentList.add({
           "type": "image_url",
-          "image_url": {
-            "url": formattedBase64Image,
-          },
+          "image_url": {"url": formattedBase64Image},
         });
       }
     }
 
-    // Add the message with content as a list
-    messages.add({
-      "role": "user",
-      "content": contentList,
-    });
+    // Mesajlar listesini oluştururken "content" artık bir liste:
+    List<Map<String, dynamic>> messages = [
+      {
+        "role": "user",
+        "content": contentList,
+      }
+    ];
 
-    // Reset the cancellation flag before starting a new request
     _isCancelled = false;
     String finalContent = '';
 
@@ -127,9 +118,7 @@ class ApiService {
       }
 
       try {
-        // (3) Create a new Client for each attempt
         _client = http.Client();
-
         final request = http.Request('POST', Uri.parse(url));
         request.headers.addAll({
           "Authorization": "Bearer $openRouterApiKey",
@@ -139,14 +128,12 @@ class ApiService {
 
         Map<String, dynamic> requestBody = {
           "model": model,
-          "stream": true, // SSE (Server-Sent Events) streaming
+          "stream": true, // SSE streaming enabled
           "messages": messages,
         };
 
         request.body = jsonEncode(requestBody);
-
         final streamedResponse = await _client!.send(request);
-
         print(localizations.openRouterResponseStatus(streamedResponse.statusCode));
 
         if (streamedResponse.statusCode == 200) {
@@ -156,7 +143,6 @@ class ApiService {
 
           finalContent = '';
           await for (var line in lines) {
-            // (4) Check for cancellation during streaming
             if (_isCancelled) {
               print("API request was cancelled mid-stream.");
               return localizations.errorResponseNotReceived;
@@ -164,9 +150,8 @@ class ApiService {
             if (line.startsWith("data: ")) {
               final jsonString = line.substring(6).trim();
               if (jsonString == "[DONE]") {
-                break; // done streaming
+                break; // End of streaming
               }
-
               try {
                 final Map<String, dynamic> event = jsonDecode(jsonString);
                 var content = event['choices']?[0]['delta']?['content'];
@@ -199,21 +184,17 @@ class ApiService {
           );
         }
       } catch (e) {
-        // Check for cancellation
         if (_isCancelled) {
           print("API request cancelled in catch block.");
           return localizations.errorResponseNotReceived;
         }
-        // Retry logic
         if (attempt == maxRetries) {
           throw Exception(
             localizations.openRouterApiRequestFailedAfterAttempts(maxRetries, e.toString()),
           );
         }
-        // Small delay before retrying
         await Future.delayed(const Duration(seconds: 2));
       } finally {
-        // (5) Close the client after each attempt
         _client?.close();
         _client = null;
       }
@@ -221,6 +202,7 @@ class ApiService {
 
     return localizations.errorResponseNotReceived;
   }
+
 
   /// Attempts to use a free model first, and if it fails (e.g., due to quota), switches to a paid model.
   ///
@@ -281,8 +263,8 @@ class ApiService {
     Function(String chunk)? onStreamChunk,
   }) {
     return tryFreeThenPaidModel(
-      freeModel: "meta-llama/llama-3.2-3b-instruct:free",
-      paidModel: "meta-llama/llama-3.2-3b-instruct",
+      freeModel: "google/gemini-2.0-flash-exp:free",
+      paidModel: "google/gemini-2.0-flash-001",
       userInput: "$role: $userInput",
       context: context,
       photoPath: photoPath, // Pass photoPath
@@ -290,71 +272,124 @@ class ApiService {
     );
   }
 
-  /// Gets a response from the Gemini model.
   Future<String> getGeminiResponse(
       String userInput,
       String context, {
-        String? photoPath, // Added photoPath
+        String? photoPath,
         Function(String chunk)? onStreamChunk,
+        required String model,
       }) {
-    return tryFreeThenPaidModel(
-      freeModel: "google/gemini-flash-1.5-exp",
-      paidModel: "google/gemini-flash-1.5",
-      userInput: userInput,
-      context: context,
-      photoPath: photoPath, // Pass photoPath
-      onStreamChunk: onStreamChunk,
-    );
+    if (model.toLowerCase() == 'gemini-flash-2.0') {
+      return tryFreeThenPaidModel(
+        freeModel: 'google/gemini-2.0-flash-exp:free',
+        paidModel: 'google/gemini-2.0-flash-001',
+        userInput: userInput,
+        context: context,
+        photoPath: photoPath,
+        onStreamChunk: onStreamChunk,
+      );
+    } else if (model.toLowerCase() == 'gemini-flash-1.5') {
+      return tryFreeThenPaidModel(
+        freeModel: 'google/gemini-flash-1.5-8b-exp',
+        paidModel: 'google/gemini-flash-1.5',
+        userInput: userInput,
+        context: context,
+        photoPath: photoPath,
+        onStreamChunk: onStreamChunk,
+      );
+    } else {
+      return getResponse(
+        userInput: userInput,
+        context: context,
+        model: 'google/gemini-pro-vision',
+        photoPath: photoPath,
+        onStreamChunk: onStreamChunk,
+      );
+    }
   }
 
-  /// Gets a response from the Llama model.
   Future<String> getLlamaResponse(
       String userInput,
       String context, {
-        String? photoPath, // Added photoPath
+        String? photoPath,
         Function(String chunk)? onStreamChunk,
+        required String model,
       }) {
-    return tryFreeThenPaidModel(
-      freeModel: "meta-llama/llama-3.1-70b-instruct:free",
-      paidModel: "meta-llama/llama-3.3-70b-instruct",
-      userInput: userInput,
-      context: context,
-      photoPath: photoPath, // Pass photoPath
-      onStreamChunk: onStreamChunk,
-    );
+    if (model.toLowerCase() == 'llama-3.1-405b') {
+      return getResponse(
+        userInput: userInput,
+        context: context,
+        model: 'meta-llama/llama-3.1-405b-instruct',
+        photoPath: photoPath,
+        onStreamChunk: onStreamChunk,
+      );
+    } else if (model.toLowerCase() == 'llama-3.2-11b-vision') {
+      return tryFreeThenPaidModel(
+        freeModel: 'meta-llama/llama-3.2-11b-vision-instruct:free',
+        paidModel: 'meta-llama/llama-3.2-11b-vision-instruct',
+        userInput: userInput,
+        context: context,
+        photoPath: photoPath,
+        onStreamChunk: onStreamChunk,
+      );
+    } else {
+      return tryFreeThenPaidModel(
+        freeModel: 'meta-llama/llama-3.3-70b-instruct:free',
+        paidModel: 'meta-llama/llama-3.3-70b-instruct',
+        userInput: userInput,
+        context: context,
+        photoPath: photoPath,
+        onStreamChunk: onStreamChunk,
+      );
+    }
   }
 
   /// Gets a response from the Hermes model.
   Future<String> getHermesResponse(
       String userInput,
       String context, {
-        String? photoPath, // Added photoPath
+        String? photoPath,
         Function(String chunk)? onStreamChunk,
+        required String model,
       }) {
-    return tryFreeThenPaidModel(
-      freeModel: "meta-llama/llama-3.1-405b-instruct:free",
-      paidModel: "nousresearch/hermes-2-pro-llama-3-8b",
-      userInput: userInput,
-      context: context,
-      photoPath: photoPath, // Pass photoPath
-      onStreamChunk: onStreamChunk,
-    );
+    if (model.toLowerCase() == 'hermes-3-70b') {
+      return getResponse(
+        userInput: userInput,
+        context: context,
+        model: 'nousresearch/hermes-3-llama-3.1-70b',
+        photoPath: photoPath,
+        onStreamChunk: onStreamChunk,
+      );
+    } else {
+      return getResponse(
+        userInput: userInput,
+        context: context,
+        model: 'nnousresearch/hermes-3-llama-3.1-405b',
+        photoPath: photoPath,
+        onStreamChunk: onStreamChunk,
+      );
+    }
   }
 
-  /// Gets a response from the ChatGPT model.
   Future<String> getChatGPTResponse(
       String userInput,
       String context, {
-        String? photoPath, // Added photoPath
+        String? photoPath, // Resim yolu (opsiyonel)
         Function(String chunk)? onStreamChunk,
+        required String model,
       }) {
+    String targetModel = model.toLowerCase() == 'chatgpt-4o-mini'
+        ? 'openai/gpt-4o-mini'
+        : model.toLowerCase() == 'chatgpt-3.5-turbo'
+        ? 'openai/gpt-3.5-turbo'
+        : model;
+
     return getResponse(
       userInput: userInput,
       context: context,
-      model: "openai/gpt-4o-mini-2024-07-18",
-      photoPath: photoPath, // Pass photoPath
+      model: targetModel,
+      photoPath: photoPath,
       onStreamChunk: onStreamChunk,
-      // maxRetries can remain default or be adjusted as needed
     );
   }
 
@@ -362,32 +397,160 @@ class ApiService {
   Future<String> getClaudeResponse(
       String userInput,
       String context, {
-        String? photoPath, // Added photoPath
+        String? photoPath,
         Function(String chunk)? onStreamChunk,
+        required String model,
       }) {
-    return getResponse(
-      userInput: userInput,
-      context: context,
-      model: "anthropic/claude-3-haiku",
-      photoPath: photoPath, // Pass photoPath
-      onStreamChunk: onStreamChunk,
-      // maxRetries can remain default or be adjusted as needed
-    );
+    if (model.toLowerCase() == 'claude-3.5-haiku') {
+      return getResponse(
+        userInput: userInput,
+        context: context,
+        model: 'anthropic/claude-3.5-haiku-20241022',
+        photoPath: photoPath,
+        onStreamChunk: onStreamChunk,
+      );
+    } else {
+      return getResponse(
+        userInput: userInput,
+        context: context,
+        model: 'anthropic/claude-3.5-haiku-20241022',
+        photoPath: photoPath,
+        onStreamChunk: onStreamChunk,
+      );
+    }
   }
 
   /// Gets a response from the Nova model.
   Future<String> getNovaResponse(
       String userInput,
       String context, {
-        String? photoPath, // Added photoPath
+        String? photoPath,
         Function(String chunk)? onStreamChunk,
+        required String model,
       }) {
-    return getResponse(
-      userInput: userInput,
-      context: context,
-      model: "amazon/nova-lite-v1",
-      photoPath: photoPath, // Pass photoPath
-      onStreamChunk: onStreamChunk,
-    );
+    if (model.toLowerCase() == 'lite-1.0') {
+      return getResponse(
+        userInput: userInput,
+        context: context,
+        model: 'amazon/nova-lite-v1',
+        photoPath: photoPath,
+        onStreamChunk: onStreamChunk,
+      );
+    }
+    else if (model.toLowerCase() == 'micro-1.0') {
+      return getResponse(
+        userInput: userInput,
+        context: context,
+        model: 'amazon/nova-micro-v1',
+        photoPath: photoPath,
+        onStreamChunk: onStreamChunk,
+      );
+    } else {
+      return getResponse(
+        userInput: userInput,
+        context: context,
+        model: 'amazon/nova-pro-v1',
+        photoPath: photoPath,
+        onStreamChunk: onStreamChunk,
+      );
+    }
+  }
+
+  Future<String> getDeepseekResponse(
+      String userInput,
+      String context, {
+        String? photoPath,
+        Function(String chunk)? onStreamChunk,
+        required String model,
+      }) {
+    if (model.toLowerCase() == 'deepseek-v3') {
+      return tryFreeThenPaidModel(
+        freeModel: 'meta-llama/llama-3.3-70b-instruct:free',
+        paidModel: 'meta-llama/llama-3.3-70b-instruct',
+        userInput: userInput,
+        context: context,
+        photoPath: photoPath,
+        onStreamChunk: onStreamChunk,
+      );
+    } else {
+      return tryFreeThenPaidModel(
+        freeModel: 'meta-llama/llama-3.3-70b-instruct:free',
+        paidModel: 'meta-llama/llama-3.3-70b-instruct',
+        userInput: userInput,
+        context: context,
+        photoPath: photoPath,
+        onStreamChunk: onStreamChunk,
+      );
+    }
+  }
+
+  Future<String> getGrokResponse(
+      String userInput,
+      String context, {
+        String? photoPath,
+        Function(String chunk)? onStreamChunk,
+        required String model,
+      }) {
+    if (model.toLowerCase() == 'grok-2') {
+      return getResponse(
+        userInput: userInput,
+        context: context,
+        model: 'x-ai/grok-2',
+        photoPath: photoPath,
+        onStreamChunk: onStreamChunk,
+      );
+    } else {
+      return getResponse(
+        userInput: userInput,
+        context: context,
+        model: 'x-ai/grok-2',
+        photoPath: photoPath,
+        onStreamChunk: onStreamChunk,
+      );
+    }
+  }
+
+  Future<String> getQwenResponse(
+      String userInput,
+      String context, {
+        String? photoPath,
+        Function(String chunk)? onStreamChunk,
+        required String model,
+      }) {
+    if (model.toLowerCase() == 'ԛwen-turbo') {
+      return getResponse(
+        userInput: userInput,
+        context: context,
+        model: 'qwen/qwen-turbo',
+        photoPath: photoPath,
+        onStreamChunk: onStreamChunk,
+      );
+    }
+    else if (model.toLowerCase() == '2-vl-72b') {
+      return getResponse(
+        userInput: userInput,
+        context: context,
+        model: 'qwen/qwen-2-vl-72b-instruct',
+        photoPath: photoPath,
+        onStreamChunk: onStreamChunk,
+      );
+    }
+    else if (model.toLowerCase() == 'ԛwen-plus') {
+      return getResponse(
+        userInput: userInput,
+        context: context,
+        model: 'qwen/qwen-plus',
+        photoPath: photoPath,
+        onStreamChunk: onStreamChunk,
+      );
+    } else {
+      return getResponse(
+        userInput: userInput,
+        context: context,
+        model: 'qwen/qvq-72b-preview',
+        photoPath: photoPath,
+        onStreamChunk: onStreamChunk,
+      );
+    }
   }
 }

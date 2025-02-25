@@ -1,4 +1,4 @@
-// model_data.dart
+// data.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
@@ -99,8 +99,8 @@ class ModelData {
         'canHandleImage': false,
         'features': 'supermodel',
         'stars': '5stars8/4stars6/3stars2/2stars3/1stars3',
-        },
-        {
+      },
+      {
         'id': 'gemini',
         'title': 'Gemini',
         'description': appLocalizations.modelGeminiDescription,
@@ -112,8 +112,9 @@ class ModelData {
         'features': 'supermodel',
         'parameters': '100 ${appLocalizations.billions}',
         'context': '2 ${appLocalizations.millions}',
-        'stars': '5stars10/4stars8/3stars2/2stars1/1stars2'
-        },
+        'stars': '5stars10/4stars8/3stars2/2stars1/1stars2',
+        'extensions': ['flash-2.0', 'flash-1.5', 'pro-1.0-vision'],
+      },
       {
         'id': 'llama',
         'title': 'Llama',
@@ -126,7 +127,8 @@ class ModelData {
         'features': 'supermodel',
         'parameters': '70 ${appLocalizations.billions}',
         'context': '4096',
-        'stars': '5stars150/4stars120/3stars20/2stars5/1stars2'
+        'stars': '5stars150/4stars120/3stars20/2stars5/1stars2',
+        'extensions': ['3.3-70b', '3.2-11b-vision', '3.1-405b'],
       },
       {
         'id': 'hermes',
@@ -141,12 +143,13 @@ class ModelData {
         'context': '131 ${appLocalizations.thousand}',
         'stars': '5stars135/4stars105/3stars25/2stars10/1stars4',
         'canHandleImage': true,
+        'extensions': ['3-70b', '3-405b']
       },
       {
-        'id': 'chatgpt4omini',
-        'title': 'GPT 4o-Mini',
-        'description': appLocalizations.modelChatGPT4oMiniDescription,
-        'shortDescription': appLocalizations.modelChatGPT4oMiniShortDescription,
+        'id': 'chatgpt',
+        'title': 'ChatGPT',
+        'description': appLocalizations.modelChatGPTDescription,
+        'shortDescription': appLocalizations.modelChatGPTShortDescription,
         'image': 'assets/chatgpt.jpg',
         'producer': 'OpenAI',
         'isServerSide': true,
@@ -154,35 +157,80 @@ class ModelData {
         'features': 'photo/supermodel',
         'canHandleImage': true,
         'parameters': '2 ${appLocalizations.trillions}',
-        'context': '128 ${appLocalizations.thousand}', // Estimated
+        'context': '128 ${appLocalizations.thousand}',
+        'extensions': ['4o-mini', '3.5-turbo'],
       },
       {
-        'id': 'claude3haiku',
-        'title': 'Claude 3 Haiku',
-        'description': appLocalizations.modelClaude3HaikuDescription,
-        'shortDescription': appLocalizations.modelClaude3HaikuShortDescription,
+        'id': 'claude',
+        'title': 'Claude',
+        'description': appLocalizations.modelClaudeDescription,
+        'shortDescription': appLocalizations.modelClaudeShortDescription,
         'image': 'assets/claude.jpg',
         'producer': 'Anthropic',
         'isServerSide': true,
         'canHandleImage': false,
         'features': 'supermodel',
         'parameters': '52 ${appLocalizations.billions}',
-        'context': '200 ${appLocalizations.thousand}', // Estimated
-        'stars': '5stars10/4stars6/3stars1/2stars2/1stars3'
+        'context': '200 ${appLocalizations.thousand}',
+        'stars': '5stars10/4stars6/3stars1/2stars2/1stars3',
+        'extensions': ['3.5-haiku'],
       },
       {
-        'id': 'amazonnovalite',
-        'title': 'Nova Lite',
-        'description': appLocalizations.modelAmazonNovaLiteDescription,
-        'shortDescription': appLocalizations.modelAmazonNovaLiteShortDescription,
+        'id': 'nova',
+        'title': 'Nova',
+        'description': appLocalizations.modelNovaDescription,
+        'shortDescription': appLocalizations.modelNovaShortDescription,
         'image': 'assets/nova.jpg',
         'producer': 'Amazon',
         'isServerSide': true,
         'canHandleImage': false,
         'features': 'supermodel',
         'parameters': '50 ${appLocalizations.billions}',
-        'context': '300 ${appLocalizations.thousand}', // Estimated
-        'stars': '5stars120/4stars100/3stars20/2stars8/1stars3'
+        'context': '300 ${appLocalizations.thousand}',
+        'stars': '5stars120/4stars100/3stars20/2stars8/1stars3',
+        'extensions': ['micro-1.0', 'lite-1.0', 'pro-1.0'],
+      },
+      {
+        'id': 'deepseek',
+        'title': appLocalizations.modelDeepseekV3Title,
+        'description': appLocalizations.modelDeepseekDescription,
+        'shortDescription': appLocalizations.modelDeepseekShortDescription,
+        'url': 'https://example.com/deepseekv3',
+        'size': '2.5 GB',
+        'image': 'assets/deepseek.jpeg',
+        'ram': '4 GB RAM',
+        'producer': 'Deepseek',
+        'isServerSide': true,
+        'canHandleImage': false,
+        'parameters': '671 ${appLocalizations.billions}',
+        'stars': '5stars7/4stars3/3stars1/2stars1/1stars0',
+        'extensions': ['v3'],
+      },
+      {
+        'id': 'grok',
+        'title': appLocalizations.modelGrokTitle,
+        'description': appLocalizations.modelDeepseekDescription,
+        'shortDescription': appLocalizations.modelDeepseekShortDescription,
+        'image': 'assets/grok.jpeg',
+        'producer': 'xAI',
+        'isServerSide': true,
+        'canHandleImage': false,
+        'parameters': '671 ${appLocalizations.billions}',
+        'stars': '5stars7/4stars3/3stars1/2stars1/1stars0',
+        'extensions': ['2'],
+      },
+      {
+        'id': 'ԛwen',
+        'title': appLocalizations.modelQwenTitle,
+        'description': appLocalizations.modelQwenDescription,
+        'shortDescription': appLocalizations.modelQwenShortDescription,
+        'image': 'assets/qwen.png',
+        'producer': 'Alibaba',
+        'isServerSide': true,
+        'canHandleImage': false,
+        'parameters': '671 ${appLocalizations.billions}',
+        'stars': '5stars7/4stars3/3stars1/2stars1/1stars0',
+        'extensions': ['2-vl-72b', 'plus', 'ԛvԛ-72b-preview', 'turbo'],
       },
       {
         'id': 'teacher',
@@ -237,7 +285,7 @@ class ModelData {
         'isServerSide': true,
         'category': 'roleplay',
         'parameters': '20 ${appLocalizations.billions}',
-        'context': '4096', // Estimated
+        'context': '4096',
         'stars': '5stars100/4stars85/3stars35/2stars10/1stars5'
       },
       {
@@ -251,7 +299,7 @@ class ModelData {
         'isServerSide': true,
         'category': 'roleplay',
         'parameters': '20 ${appLocalizations.billions}',
-        'context': '4096', // Estimated
+        'context': '4096',
         'stars': '5stars125/4stars105/3stars20/2stars8/1stars3'
       },
       {
@@ -265,7 +313,7 @@ class ModelData {
         'isServerSide': true,
         'category': 'roleplay',
         'parameters': '20 ${appLocalizations.billions}',
-        'context': '4096', // Estimated
+        'context': '4096',
         'stars': '5stars140/4stars120/3stars10/2stars3/1stars1'
       },
     ];
