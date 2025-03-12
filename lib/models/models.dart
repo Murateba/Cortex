@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,7 +12,7 @@ import 'chart.dart';
 import 'model.dart';
 import 'notifications.dart';
 import 'theme.dart';
-import 'data.dart';
+import 'model_data.dart';
 import 'download.dart';
 import 'main.dart';
 import 'system_info.dart';
@@ -778,7 +779,7 @@ class _ModelsScreenState extends State<ModelsScreen>
                   vertical: MediaQuery.of(context).size.width * 0.02,
                 ),
                 decoration: BoxDecoration(
-                  color: AppColors.background,
+                  color: AppColors.quaternaryColor,
                   borderRadius: BorderRadius.circular(MediaQuery.of(context).size.width * 0.03),
                 ),
                 child: ListTile(
@@ -786,14 +787,13 @@ class _ModelsScreenState extends State<ModelsScreen>
                     localizations.viewModelInformations,
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: AppColors.opposedPrimaryColor,
+                      color: AppColors.primaryColor.inverted,
                       fontSize: MediaQuery.of(context).size.width * 0.04,
                     ),
                   ),
                   onTap: () {
                     Navigator.pop(context);
                     if (modelData != null) {
-                      // ... (model detaylarına geçiş kodu)
                     }
                   },
                 ),
@@ -804,7 +804,7 @@ class _ModelsScreenState extends State<ModelsScreen>
                   vertical: MediaQuery.of(context).size.width * 0.02,
                 ),
                 decoration: BoxDecoration(
-                  color: AppColors.warning,
+                  color: AppColors.septenaryColor,
                   borderRadius: BorderRadius.circular(MediaQuery.of(context).size.width * 0.03),
                 ),
                 child: ListTile(
@@ -840,7 +840,7 @@ class _ModelsScreenState extends State<ModelsScreen>
                     localizations.cancel,
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      color: AppColors.opposedPrimaryColor,
+                      color: AppColors.primaryColor.inverted,
                       fontSize: MediaQuery.of(context).size.width * 0.04,
                     ),
                   ),
@@ -886,7 +886,6 @@ class _ModelsScreenState extends State<ModelsScreen>
     }
   }
 
-  // 1. _buildModelTile (isDarkTheme parametresi kaldırıldı)
   Widget _buildModelTile(
       String id,
       String title,
@@ -926,7 +925,7 @@ class _ModelsScreenState extends State<ModelsScreen>
             color: AppColors.secondaryColor,
             child: Icon(
               Icons.broken_image,
-              color: AppColors.opposedPrimaryColor,
+              color: AppColors.primaryColor.inverted,
               size: imageWidth * 0.48,
             ),
           );
@@ -958,12 +957,13 @@ class _ModelsScreenState extends State<ModelsScreen>
               () => LongPressGestureRecognizer(duration: const Duration(milliseconds: 100)),
               (instance) {
             instance.onLongPress = (manager.isDownloaded && !isServerSide && !isCustomModel)
-                ? () => _showModelOptions(id, isServerSide, isCustomModel, modelPath)
+                ? () => _removeModel(id, isCustomModel: isCustomModel, modelPath: modelPath)
                 : null;
           },
         ),
       },
       child: GestureDetector(
+        behavior: HitTestBehavior.opaque, // Tüm boş alanların dokunmasını sağlar
         onTap: () => _openModelDetail(
           id,
           description,
@@ -980,7 +980,7 @@ class _ModelsScreenState extends State<ModelsScreen>
           modelPath: modelPath,
         ),
         onLongPress: (manager.isDownloaded && !isServerSide && !isCustomModel)
-            ? () => _showModelOptions(id, isServerSide, isCustomModel, modelPath)
+            ? () => _removeModel(id, isCustomModel: isCustomModel, modelPath: modelPath)
             : null,
         child: Padding(
           padding: EdgeInsets.symmetric(
@@ -1004,7 +1004,7 @@ class _ModelsScreenState extends State<ModelsScreen>
                           Text(
                             title,
                             style: TextStyle(
-                              color: AppColors.opposedPrimaryColor,
+                              color: AppColors.primaryColor.inverted,
                               fontSize: screenWidth * 0.04,
                               fontWeight: FontWeight.bold,
                             ),
@@ -1023,7 +1023,7 @@ class _ModelsScreenState extends State<ModelsScreen>
                                     maxLines: 2,
                                     overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
-                                      color: AppColors.quinaryColor,
+                                      color: AppColors.primaryColor.inverted.withOpacity(0.5),
                                       fontSize: screenWidth * 0.029,
                                     ),
                                   ),
@@ -1057,7 +1057,7 @@ class _ModelsScreenState extends State<ModelsScreen>
                                           : localizations.downloaded(manager.progress.toStringAsFixed(0)),
                                       textAlign: TextAlign.center,
                                       style: TextStyle(
-                                        color: AppColors.opposedPrimaryColor,
+                                        color: AppColors.primaryColor.inverted,
                                         fontSize: screenWidth * 0.03,
                                       ),
                                     ),
@@ -1068,7 +1068,7 @@ class _ModelsScreenState extends State<ModelsScreen>
                                     child: Text(
                                       localizations.downloadPaused,
                                       style: TextStyle(
-                                        color: AppColors.opposedPrimaryColor,
+                                        color: AppColors.primaryColor.inverted,
                                         fontSize: screenWidth * 0.03,
                                       ),
                                     ),
@@ -1128,7 +1128,6 @@ class _ModelsScreenState extends State<ModelsScreen>
     );
   }
 
-  // UPDATED _buildButtonByState function
   Widget _buildButtonByState({
     required String id,
     required DownloadManager manager,
@@ -1216,7 +1215,7 @@ class _ModelsScreenState extends State<ModelsScreen>
         width: buttonWidth,
         height: buttonHeight,
         borderRadius: commonBorderRadius,
-        borderColor: AppColors.opposedPrimaryColor,
+        borderColor: AppColors.primaryColor.inverted,
         text: localizations.cancel,
         fontSize: screenWidth * 0.035,
       );
@@ -1263,18 +1262,15 @@ class _ModelsScreenState extends State<ModelsScreen>
             backgroundColor: MaterialStateProperty.resolveWith<Color>(
                   (states) {
                 if (states.contains(MaterialState.disabled)) {
-                  // Eğer uyumlu değilse (disabled durumunda) secondaryColor kullanılacak.
                   return AppColors.quaternaryColor;
                 }
-                // Eğer uyumluysa, opposedPrimaryColor kullanılacak.
-                return AppColors.opposedPrimaryColor;
+                return AppColors.primaryColor.inverted;
               },
             ),
             foregroundColor: MaterialStateProperty.resolveWith<Color>(
                   (states) {
                 if (states.contains(MaterialState.disabled)) {
-                  // Disabled durumunda opposedSecondaryColor.
-                  return AppColors.opposedSecondaryColor;
+                  return AppColors.tertiaryColor;
                 }
                 return AppColors.primaryColor;
               },
@@ -1468,52 +1464,60 @@ class _ModelsScreenState extends State<ModelsScreen>
     }
   }
 
+// Model bazlı mutex'leri tutan harita (_ModelsScreenState içerisinde diğer değişkenlerin yanına ekleyin):
   final Map<String, Mutex> _modelMutexes = {};
 
+// --------------------------
+// GÜNCELLENMİŞ _downloadModel FONKSİYONU
+// --------------------------
   Future<void> _downloadModel(String id, String? url, String title) async {
-    debugPrint('Attempting to download model $id');
+    debugPrint('Model $id için indirme başlatılmaya çalışılıyor.');
     if (url == null) {
-      debugPrint('URL is null for model $id');
+      debugPrint('Model $id için URL null.');
       return;
     }
 
     final manager = _downloadManagers.putIfAbsent(id, () => DownloadManager());
     debugPrint('Manager state for $id: isDownloaded=${manager.isDownloaded}, isDownloading=${manager.isDownloading}');
 
-    // Get or create a mutex for this model
+    // Model için bir mutex elde et veya oluştur.
     final mutex = _modelMutexes.putIfAbsent(id, () => Mutex());
-
     await mutex.acquire();
-    debugPrint('Acquired mutex for $id');
+    debugPrint('Model $id için mutex edinildi.');
 
     try {
-      // Check if already downloaded or downloading
+      // Eğer model zaten indirilmiş veya indirme işlemi devam ediyorsa, yeni bir işlem başlatılmaz.
       if (manager.isDownloaded || manager.isDownloading) {
-        debugPrint('Model $id is already downloaded or downloading');
+        debugPrint('Model $id zaten indirilmiş veya indirme işlemi devam ediyor.');
+        return;
+      }
+      // Ek olarak, eğer iptal isteği (cancel) yakın zamanda verildiyse, başlatmaya girmiyoruz.
+      if (manager.isCancelled) {
+        debugPrint('Model $id için iptal isteği mevcut, indirme başlatılmıyor.');
         return;
       }
 
-      debugPrint('Starting download for $id');
+      debugPrint('Model $id için indirme başlatılıyor.');
       manager.setCancelled(false);
       manager.setDownloading(true);
       manager.setPaused(false);
       manager.setProgress(0.0);
 
-      // Perform the download in the background
+      // İndirme işlemini kilidin dışında başlatıyoruz.
       _doDownload(id, url, title).catchError((error) {
-        debugPrint('Download error for $id: $error');
+        debugPrint('Model $id için indirme hatası: $error');
       });
     } finally {
       mutex.release();
-      debugPrint('Released mutex for $id');
+      debugPrint('Model $id için mutex serbest bırakıldı.');
     }
   }
 
+// --------------------------
+// GÜNCELLENMİŞ _doDownload FONKSİYONU (önceki versiyona çok benzer, ancak _downloadModel’dan alınan durum bilgileriyle uyumlu)
   Future<void> _doDownload(String id, String url, String title) async {
     final manager = _downloadManagers[id]!;
     final prefs = await SharedPreferences.getInstance();
-
-    // Create a completer to signal download completion
     final completer = Completer<void>();
 
     try {
@@ -1534,6 +1538,7 @@ class _ModelsScreenState extends State<ModelsScreen>
           manager.setDownloaded(true);
           manager.setPaused(false);
           manager.setProgress(100.0);
+
           Provider.of<DownloadedModelsManager>(context, listen: false)
               .updateSingleDownloadedModel(id, _getTitleById(id));
           Provider.of<FileDownloadHelper>(context, listen: false).notifyListeners();
@@ -1542,7 +1547,7 @@ class _ModelsScreenState extends State<ModelsScreen>
           }
         },
         onDownloadError: (error) async {
-          debugPrint('Download error for modelId: $id, error: $error');
+          debugPrint('Model $id için indirme hatası: $error');
           manager.setDownloading(false);
           manager.setPaused(false);
           manager.setProgress(0.0);
@@ -1565,7 +1570,6 @@ class _ModelsScreenState extends State<ModelsScreen>
         prefs.setString('download_task_id_$id', taskId);
       }
 
-      // Wait for the download to complete or fail
       return completer.future;
     } catch (e) {
       manager.setDownloading(false);
@@ -1721,6 +1725,14 @@ class _ModelsScreenState extends State<ModelsScreen>
     }
   }
 
+  Color darkenWithBlack(Color color, double factor) {
+    assert(factor >= 0 && factor <= 1);
+    final r = (color.red * (1.0 - factor)).round();
+    final g = (color.green * (1.0 - factor)).round();
+    final b = (color.blue * (1.0 - factor)).round();
+    return Color.fromARGB(color.alpha, r, g, b);
+  }
+
   /// Modeli ve yerel dosyasını siler
   Future<void> _removeModel(
       String id, {
@@ -1730,48 +1742,135 @@ class _ModelsScreenState extends State<ModelsScreen>
     final localizations = AppLocalizations.of(context)!;
     final prefs = await SharedPreferences.getInstance();
 
-    final bool? confirm = await showDialog<bool>(
+    final themeSettings = AppColors.getSystemUIOverlayStyleForTheme(AppColors.currentTheme);
+    Color navBarColor = themeSettings['navigationBarColor'] as Color;
+    Color darkenedNavBarColor = darkenWithBlack(navBarColor, 0.5);
+
+    Brightness iconBrightness = ThemeData.estimateBrightnessForColor(darkenedNavBarColor) == Brightness.dark
+        ? Brightness.light
+        : Brightness.dark;
+
+    // Darken navigation bar
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(
+        systemNavigationBarColor: darkenedNavBarColor,
+        systemNavigationBarIconBrightness: iconBrightness,
+      ),
+    );
+
+    final bool? confirm = await showGeneralDialog<bool>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text(
-            localizations.removeModel,
-            style: TextStyle(
-              color: AppColors.opposedPrimaryColor,
-            ),
-          ),
-          content: Text(
-            localizations.confirmRemoveModel(_getTitleById(id)),
-            style: TextStyle(
-              color: AppColors.opposedPrimaryColor,
-            ),
-          ),
-          backgroundColor: AppColors.background,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8.0),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: Text(
-                localizations.cancel,
-                style: TextStyle(
-                  color: AppColors.dialogActionCancelText,
+      barrierDismissible: true,
+      barrierLabel: 'RemoveModel',
+      transitionDuration: const Duration(milliseconds: 150),
+      pageBuilder: (ctx, animation, secondaryAnimation) {
+        return Center(
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              width: MediaQuery.of(ctx).size.width * 0.8,
+              decoration: BoxDecoration(
+                color: AppColors.secondaryColor,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        children: [
+                          Text(
+                            localizations.removeModel,
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.primaryColor.inverted,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            localizations.confirmRemoveModel(_getTitleById(id)),
+                            style: TextStyle(
+                              color: AppColors.primaryColor.inverted,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                    Divider(color: AppColors.quinaryColor, thickness: 0.5, height: 1),
+                    IntrinsicHeight(
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                splashColor: AppColors.senaryColor.withOpacity(0.1),
+                                highlightColor: AppColors.senaryColor.withOpacity(0.1),
+                                onTap: () => Navigator.of(ctx).pop(false),
+                                child: Container(
+                                  alignment: Alignment.center,
+                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  child: Text(
+                                    localizations.cancel,
+                                    style: TextStyle(
+                                      color: AppColors.senaryColor,
+                                      fontSize: 16,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          VerticalDivider(width: 1, thickness: 0.5, color: AppColors.quinaryColor),
+                          Expanded(
+                            child: Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                splashColor: AppColors.septenaryColor.withOpacity(0.1),
+                                highlightColor: AppColors.septenaryColor.withOpacity(0.1),
+                                onTap: () => Navigator.of(ctx).pop(true),
+                                child: Container(
+                                  alignment: Alignment.center,
+                                  padding: const EdgeInsets.symmetric(vertical: 16),
+                                  child: Text(
+                                    localizations.remove,
+                                    style: TextStyle(
+                                      color: AppColors.septenaryColor,
+                                      fontSize: 16,
+                                    ),
+                                    textAlign: TextAlign.center,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: Text(
-                localizations.remove,
-                style: TextStyle(
-                  color: AppColors.dialogActionRemoveText,
-                ),
-              ),
-            ),
-          ],
+          ),
         );
       },
+      transitionBuilder: (ctx, animation, secondaryAnimation, child) =>
+          FadeTransition(opacity: animation, child: child),
+    );
+
+    // Restore original navigation bar style
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(
+        systemNavigationBarColor: themeSettings['navigationBarColor'] as Color,
+        systemNavigationBarIconBrightness: themeSettings['navigationBarIconBrightness'] as Brightness,
+      ),
     );
 
     if (confirm != true) return;
@@ -1880,30 +1979,44 @@ class _ModelsScreenState extends State<ModelsScreen>
   }
 
   Future<void> _cancelDownload(String id) async {
-    debugPrint('Cancelling download for modelId: $id');
+    debugPrint('Model $id için indirme iptal ediliyor.');
     final prefs = await SharedPreferences.getInstance();
     final manager = _downloadManagers[id];
+
+    // Eğer manager yok veya aktif bir indirme yoksa, iptal işlemi yapılmaz.
     if (manager == null || !manager.isDownloading) {
-      debugPrint('No active download for modelId: $id');
+      debugPrint('Model $id için aktif bir indirme bulunamadı.');
       return;
     }
 
-    manager.setCancelled(true);
-    manager.setDownloading(false);
-    manager.setPaused(false);
-    manager.setProgress(0.0);
+    // Aynı model için kullanılan mutex’i de elde ediyoruz.
+    final mutex = _modelMutexes.putIfAbsent(id, () => Mutex());
+    await mutex.acquire();
+    debugPrint('Model $id için cancel işlemi için mutex edinildi.');
+    try {
+      // İptal isteği işaretleniyor.
+      manager.setCancelled(true);
+      manager.setDownloading(false);
+      manager.setPaused(false);
+      manager.setProgress(0.0);
 
-    String? taskId = _downloadTaskIds[id] ?? prefs.getString('download_task_id_$id');
-    if (taskId != null) {
-      debugPrint('Cancelling taskId: $taskId for modelId: $id');
-      await FileDownloadHelper().cancelDownload(taskId);
-      await FileDownloadHelper().removeDownload(taskId);
-      _downloadTaskIds.remove(id);
-      prefs.remove('download_task_id_$id');
-      prefs.setBool('is_downloading_$id', false);
-      debugPrint('Download cancelled and preferences updated for modelId: $id');
-    } else {
-      debugPrint('No taskId found for modelId: $id');
+      // İlgili taskId’yi alıyoruz.
+      String? taskId = _downloadTaskIds[id] ?? prefs.getString('download_task_id_$id');
+      if (taskId != null) {
+        debugPrint('Model $id için taskId: $taskId iptal ediliyor.');
+        await FileDownloadHelper().cancelDownload(taskId);
+        await FileDownloadHelper().removeDownload(taskId);
+        _downloadTaskIds.remove(id);
+        prefs.remove('download_task_id_$id');
+        prefs.setBool('is_downloading_$id', false);
+      } else {
+        debugPrint('Model $id için iptal edilecek taskId bulunamadı.');
+      }
+    } finally {
+      // İptal tamamlandıktan sonra, isCancelled flag’i sıfırlanıyor
+      manager.setCancelled(false);
+      mutex.release();
+      debugPrint('Model $id için cancel işlemi tamamlandı, mutex serbest bırakıldı.');
     }
   }
 
@@ -1987,7 +2100,7 @@ class _ModelsScreenState extends State<ModelsScreen>
               localizations.uploadYourOwnModel,
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                color: AppColors.opposedPrimaryColor,
+                color: AppColors.primaryColor.inverted,
                 fontSize: 18,
               ),
             ),
@@ -1998,7 +2111,7 @@ class _ModelsScreenState extends State<ModelsScreen>
               width: double.infinity,
               height: 200,
               decoration: BoxDecoration(
-                color: AppColors.uploadDialogBackground,
+                color: AppColors.background,
                 border: Border.all(
                   color: Colors.white,
                   width: 1,
@@ -2017,7 +2130,7 @@ class _ModelsScreenState extends State<ModelsScreen>
                   Text(
                     localizations.selectGGUFFile,
                     style: TextStyle(
-                      color: AppColors.quinaryColor,
+                      color: AppColors.primaryColor.inverted.withOpacity(0.5),
                       fontSize: 16,
                     ),
                   ),
@@ -2025,7 +2138,7 @@ class _ModelsScreenState extends State<ModelsScreen>
               ),
             ),
           ),
-          backgroundColor: AppColors.uploadDialogBackground,
+          backgroundColor: AppColors.background,
           shape: RoundedRectangleBorder(
             side: const BorderSide(color: Colors.white, width: 1),
             borderRadius: BorderRadius.circular(12.0),
@@ -2241,13 +2354,13 @@ class _ModelsScreenState extends State<ModelsScreen>
         decoration: InputDecoration(
           hintText: localizations.searchHint,
           hintStyle: TextStyle(
-            color: AppColors.opposedPrimaryColor,
+            color: AppColors.primaryColor.inverted,
             fontSize: screenWidth * 0.04,
           ),
           prefixIcon: Icon(
             Icons.search,
             size: screenWidth * 0.06,
-            color: AppColors.opposedPrimaryColor,
+            color: AppColors.primaryColor.inverted,
           ),
           filled: true,
           fillColor: AppColors.quaternaryColor,
@@ -2258,7 +2371,7 @@ class _ModelsScreenState extends State<ModelsScreen>
         ),
         style: TextStyle(
           fontSize: screenWidth * 0.04,
-          color: AppColors.opposedPrimaryColor,
+          color: AppColors.primaryColor.inverted,
         ),
       ),
     );
@@ -2377,7 +2490,7 @@ class _ModelsScreenState extends State<ModelsScreen>
                 Text(
                   localizations.systemInfo,
                   style: TextStyle(
-                    color: AppColors.opposedPrimaryColor,
+                    color: AppColors.primaryColor.inverted,
                     fontSize: screenWidth * 0.05,
                     fontWeight: FontWeight.bold,
                   ),
@@ -2487,7 +2600,7 @@ class _ModelsScreenState extends State<ModelsScreen>
         text,
         textAlign: TextAlign.center,
         style: TextStyle(
-          color: AppColors.quinaryColor,
+          color: AppColors.primaryColor.inverted.withOpacity(0.5),
           fontSize: screenWidth * 0.045,
           fontWeight: FontWeight.w500,
         ),
@@ -2513,7 +2626,7 @@ class _ModelsScreenState extends State<ModelsScreen>
           Text(
             title,
             style: TextStyle(
-              color: AppColors.opposedPrimaryColor,
+              color: AppColors.primaryColor.inverted,
               fontSize: screenWidth * 0.05,
               fontWeight: FontWeight.bold,
             ),
@@ -2537,7 +2650,7 @@ class _ModelsScreenState extends State<ModelsScreen>
           localizations.modelsTitle,
           style: TextStyle(
             fontFamily: 'Roboto',
-            color: AppColors.opposedPrimaryColor,
+            color: AppColors.primaryColor.inverted,
             fontSize: screenWidth * 0.07,
             fontWeight: FontWeight.bold,
           ),

@@ -1,5 +1,6 @@
 // model.dart
 import 'dart:async';
+import 'package:cortex/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -220,7 +221,7 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
         widget.title,
         style: TextStyle(
           fontFamily: 'Roboto',
-          color: AppColors.opposedPrimaryColor,
+          color: AppColors.primaryColor.inverted,
           fontSize: screenWidth * 0.055,
           fontWeight: FontWeight.bold,
         ),
@@ -246,7 +247,7 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
                   widget.title,
                   style: TextStyle(
                     fontFamily: 'Roboto',
-                    color: AppColors.opposedPrimaryColor,
+                    color: AppColors.primaryColor.inverted,
                     fontSize: screenWidth * 0.055,
                     fontWeight: FontWeight.bold,
                   ),
@@ -296,7 +297,7 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
       backgroundColor: AppColors.background,
       elevation: 0,
       iconTheme: IconThemeData(
-        color: AppColors.opposedPrimaryColor,
+        color: AppColors.primaryColor.inverted,
         size: screenWidth * 0.07,
       ),
       actions: const [],
@@ -335,7 +336,7 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
               Text(
                 widget.title,
                 style: GoogleFonts.poppins(
-                  color: AppColors.opposedPrimaryColor,
+                  color: AppColors.primaryColor.inverted,
                   fontSize: screenWidth * 0.06,
                   fontWeight: FontWeight.bold,
                 ),
@@ -619,7 +620,7 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
           vertical: screenHeight * 0.01,
         ),
         decoration: BoxDecoration(
-          color: AppColors.quaternaryColor, // Renk güncellendi
+          color: AppColors.secondaryColor, // Renk güncellendi
           boxShadow: [
             BoxShadow(
               color: Colors.black12,
@@ -658,7 +659,7 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
         vertical: screenHeight * 0.01,
       ),
       decoration: BoxDecoration(
-        color: AppColors.quaternaryColor,
+        color: AppColors.secondaryColor,
         boxShadow: [
           BoxShadow(
             color: Colors.black12,
@@ -711,7 +712,7 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
             width: double.infinity,
             height: screenHeight * 0.058,
             borderRadius: screenWidth * 0.03,
-            borderColor: AppColors.opposedPrimaryColor,
+            borderColor: AppColors.primaryColor.inverted,
             text: localizations.cancel,
             fontSize: screenWidth * 0.04,
             strokeFactor: 0.004,
@@ -736,7 +737,7 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
               });
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.opposedPrimaryColor,
+              backgroundColor: AppColors.primaryColor.inverted,
               padding: EdgeInsets.symmetric(vertical: screenHeight * 0.015),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(screenWidth * 0.03),
@@ -768,7 +769,7 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
           child: ElevatedButton(
             onPressed: widget.onRemovePressed == null ? null : _removeModel,
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.warning,
+              backgroundColor: AppColors.septenaryColor,
               padding: EdgeInsets.symmetric(vertical: screenWidth * 0.04),
               minimumSize: Size(double.infinity, screenWidth * 0.1),
               shape: RoundedRectangleBorder(
@@ -881,7 +882,7 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
                     'assets/star.svg',
                     width: screenWidth * 0.06,
                     height: screenWidth * 0.06,
-                    color: AppColors.opposedPrimaryColor,
+                    color: AppColors.primaryColor.inverted,
                   ),
                   Text(
                     '$star',
@@ -902,7 +903,7 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
                     minHeight: screenWidth * 0.02,
                     backgroundColor: AppColors.border,
                     valueColor: AlwaysStoppedAnimation<Color>(
-                      AppColors.opposedPrimaryColor,
+                      AppColors.primaryColor.inverted,
                     ),
                   ),
                 ),
@@ -943,7 +944,7 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
             Text(
               featureTitles[featureKey] ?? '',
               style: TextStyle(
-                color: AppColors.opposedPrimaryColor,
+                color: AppColors.primaryColor.inverted,
                 fontSize: screenWidth * 0.04,
                 fontWeight: FontWeight.w500,
               ),
@@ -1006,7 +1007,7 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
     return Text(
       sectionTitle,
       style: TextStyle(
-        color: AppColors.opposedPrimaryColor,
+        color: AppColors.primaryColor.inverted,
         fontSize: screenWidth * 0.05,
         fontWeight: FontWeight.w600,
       ),
@@ -1016,7 +1017,7 @@ class _ModelDetailPageState extends State<ModelDetailPage> {
   Widget _buildSectionContainer(Widget child, bool isDarkTheme, double screenWidth) {
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.quaternaryColor,
+        color: AppColors.secondaryColor,
         borderRadius: BorderRadius.circular(screenWidth * 0.04),
       ),
       padding: EdgeInsets.all(screenWidth * 0.04),

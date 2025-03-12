@@ -1,5 +1,6 @@
 // parser.dart
 
+import 'package:cortex/main.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import '../theme.dart';
@@ -65,7 +66,7 @@ List<InlineSpan> parseText(String text) {
           spans.add(TextSpan(
             text: text.substring(currentIndex, match.start),
             style: TextStyle(
-              color: AppColors.primaryColor,
+              color: AppColors.primaryColor.inverted,
               fontSize: 16,
             ),
           ));
@@ -97,7 +98,7 @@ List<InlineSpan> parseText(String text) {
             child: SafeMathTex(
               latex: latex,
               textStyle: TextStyle(
-                color: AppColors.primaryColor,
+                color: AppColors.primaryColor.inverted,
                 fontSize: 16, // İhtiyacınıza göre font boyutunu ayarlayın
               ),
             ),
@@ -123,7 +124,7 @@ List<InlineSpan> parseText(String text) {
             span = TextSpan(
               text: matchText,
               style: TextStyle(
-                color: AppColors.primaryColor,
+                color: AppColors.primaryColor.inverted,
                 fontSize: 16,
               ),
             );
@@ -140,7 +141,7 @@ List<InlineSpan> parseText(String text) {
             span = TextSpan(
               text: content + '\n',
               style: TextStyle(
-                color: AppColors.primaryColor,
+                color: AppColors.primaryColor.inverted,
                 fontSize: 22 - level.toDouble(),
                 fontWeight: FontWeight.bold,
               ),
@@ -149,7 +150,7 @@ List<InlineSpan> parseText(String text) {
             span = TextSpan(
               text: matchText,
               style: TextStyle(
-                color: AppColors.primaryColor,
+                color: AppColors.primaryColor.inverted,
                 fontSize: 16,
               ),
             );
@@ -167,7 +168,7 @@ List<InlineSpan> parseText(String text) {
             span = TextSpan(
               text: content,
               style: TextStyle(
-                color: AppColors.primaryColor,
+                color: AppColors.primaryColor.inverted,
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
                 fontStyle: FontStyle.italic,
@@ -177,7 +178,7 @@ List<InlineSpan> parseText(String text) {
             span = TextSpan(
               text: matchText,
               style: TextStyle(
-                color: AppColors.primaryColor,
+                color: AppColors.primaryColor.inverted,
                 fontSize: 16,
               ),
             );
@@ -195,7 +196,7 @@ List<InlineSpan> parseText(String text) {
             span = TextSpan(
               text: content,
               style: TextStyle(
-                color: AppColors.primaryColor,
+                color: AppColors.primaryColor.inverted,
                 fontSize: 16,
                 fontWeight: FontWeight.bold,
               ),
@@ -204,7 +205,7 @@ List<InlineSpan> parseText(String text) {
             span = TextSpan(
               text: matchText,
               style: TextStyle(
-                color: AppColors.primaryColor,
+                color: AppColors.primaryColor.inverted,
                 fontSize: 16,
               ),
             );
@@ -222,7 +223,7 @@ List<InlineSpan> parseText(String text) {
             span = TextSpan(
               text: content,
               style: TextStyle(
-                color: AppColors.primaryColor,
+                color: AppColors.primaryColor.inverted,
                 fontSize: 16,
                 fontStyle: FontStyle.italic,
               ),
@@ -231,7 +232,7 @@ List<InlineSpan> parseText(String text) {
             span = TextSpan(
               text: matchText,
               style: TextStyle(
-                color: AppColors.primaryColor,
+                color: AppColors.primaryColor.inverted,
                 fontSize: 16,
               ),
             );
@@ -248,7 +249,7 @@ List<InlineSpan> parseText(String text) {
             span = TextSpan(
               text: content,
               style: TextStyle(
-                color: AppColors.primaryColor,
+                color: AppColors.primaryColor.inverted,
                 fontSize: 16,
                 decoration: TextDecoration.lineThrough,
               ),
@@ -257,7 +258,7 @@ List<InlineSpan> parseText(String text) {
             span = TextSpan(
               text: matchText,
               style: TextStyle(
-                color: AppColors.primaryColor,
+                color: AppColors.primaryColor.inverted,
                 fontSize: 16,
               ),
             );
@@ -274,7 +275,7 @@ List<InlineSpan> parseText(String text) {
             span = TextSpan(
               text: content,
               style: TextStyle(
-                color: AppColors.primaryColor,
+                color: AppColors.primaryColor.inverted,
                 fontSize: 16,
                 fontFamily: 'monospace',
                 backgroundColor: AppColors.tertiaryColor,
@@ -284,7 +285,7 @@ List<InlineSpan> parseText(String text) {
             span = TextSpan(
               text: matchText,
               style: TextStyle(
-                color: AppColors.primaryColor,
+                color: AppColors.primaryColor.inverted,
                 fontSize: 16,
               ),
             );
@@ -315,7 +316,7 @@ List<InlineSpan> parseText(String text) {
           span = TextSpan(
             text: matchText,
             style: TextStyle(
-              color: AppColors.primaryColor,
+              color: AppColors.primaryColor.inverted,
               fontSize: 16,
             ),
           );
@@ -329,7 +330,7 @@ List<InlineSpan> parseText(String text) {
         spans.add(TextSpan(
           text: match.group(0),
           style: TextStyle(
-            color: AppColors.primaryColor,
+            color: AppColors.primaryColor.inverted,
             fontSize: 16,
           ),
         ));
@@ -342,7 +343,7 @@ List<InlineSpan> parseText(String text) {
       spans.add(TextSpan(
         text: text.substring(currentIndex),
         style: TextStyle(
-          color: AppColors.primaryColor,
+          color: AppColors.primaryColor.inverted,
           fontSize: 16,
         ),
       ));
@@ -356,7 +357,7 @@ List<InlineSpan> parseText(String text) {
       TextSpan(
         text: text,
         style: TextStyle(
-          color: AppColors.primaryColor,
+          color: AppColors.primaryColor.inverted,
           fontSize: 16,
         ),
       )
@@ -430,7 +431,7 @@ class _FittingLatexWidgetState extends State<_FittingLatexWidget> {
             child: Math.tex(
               widget.latex,
               textStyle: TextStyle(
-                color: AppColors.primaryColor,
+                color: AppColors.primaryColor.inverted,
                 fontSize: 16,
               ),
             ),

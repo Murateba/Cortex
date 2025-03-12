@@ -1,6 +1,28 @@
-// data.dart
+// model_data.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
+
+class ModelInfo {
+  final String id;
+  final String title;
+  final String description;
+  final String imagePath;
+  final String producer;
+  final String? path;
+  final String? role;
+  final bool canHandleImage;
+
+  ModelInfo({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.imagePath,
+    required this.producer,
+    this.path,
+    this.role,
+    this.canHandleImage = false,
+  });
+}
 
 class ModelData {
   static List<Map<String, dynamic>> models(BuildContext context) {
@@ -158,7 +180,7 @@ class ModelData {
         'canHandleImage': true,
         'parameters': '2 ${appLocalizations.trillions}',
         'context': '128 ${appLocalizations.thousand}',
-        'extensions': ['4o-mini', '3.5-turbo'],
+        'extensions': ['4o-mini', '3.5-turbo', /* 'o3-mini', 'o3-mini-high' */],
       },
       {
         'id': 'claude',
@@ -204,7 +226,7 @@ class ModelData {
         'canHandleImage': false,
         'parameters': '671 ${appLocalizations.billions}',
         'stars': '5stars7/4stars3/3stars1/2stars1/1stars0',
-        'extensions': ['v3'],
+        'extensions': ['v3' /*,s'r1'*/],
       },
       {
         'id': 'grok',

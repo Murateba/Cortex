@@ -3,122 +3,12 @@ import 'dart:isolate';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_downloader/flutter_downloader.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 
 @pragma('vm:entry-point')
 void downloadCallback(String id, int status, int progress) {
   final SendPort? send = IsolateNameServer.lookupPortByName('downloader_send_port');
   send?.send([id, status, progress]);
-}
-
-class NotificationStrings {
-  static String downloadingTitle = 'Downloading';
-  static String downloadCompletedTitle = 'Download Completed';
-  static String downloadPausedTitle = 'Download Paused';
-  static String downloadErrorTitle = 'Download Error';
-  static String cancelButtonText = 'Cancel';
-
-  static void init(BuildContext context) {
-    final localizations = AppLocalizations.of(context)!;
-    downloadingTitle = localizations.downloadingTitle;
-    downloadCompletedTitle = localizations.downloadCompletedTitle;
-    downloadPausedTitle = localizations.downloadPausedTitle;
-    downloadErrorTitle = localizations.downloadErrorTitle;
-    cancelButtonText = localizations.cancelButtonText;
-  }
-}
-
-class LocalNotificationService {
-  static final LocalNotificationService instance = LocalNotificationService._internal();
-  LocalNotificationService._internal();
-
-  final FlutterLocalNotificationsPlugin _flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
-
-  Future<void> initNotifications() async {
-    const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const InitializationSettings initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
-
-    await _flutterLocalNotificationsPlugin.initialize(
-      initializationSettings,
-      onDidReceiveNotificationResponse: (NotificationResponse response) async {
-        debugPrint('Notification response: actionId=${response.actionId}, payload=${response.payload}');
-        if (response.actionId == 'CANCEL_ACTION' && response.payload != null) {
-          debugPrint('Cancelling download for taskId: ${response.payload}');
-          await FileDownloadHelper().cancelDownload(response.payload!);
-        }
-      },
-    );
-  }
-
-  Future<void> showDownloadProgressNotification({
-    required int notificationId,
-    required String title,
-    required double progressPercent,
-    String? body,
-    String? payload,
-    bool ongoing = true,
-  }) async {
-    final androidDetails = AndroidNotificationDetails(
-      'download_channel_id',
-      'İndirme İşlemleri',
-      channelDescription: 'Büyük dosya indirme bildirimleri',
-      importance: Importance.max,
-      priority: Priority.high,
-      onlyAlertOnce: true,
-      ongoing: ongoing,
-      showProgress: true,
-      maxProgress: 100,
-      progress: progressPercent.toInt(),
-      actions: [
-        AndroidNotificationAction(
-          'CANCEL_ACTION',
-          NotificationStrings.cancelButtonText,
-          cancelNotification: true, // Bildirimi otomatik kapatma
-          showsUserInterface: false, // UI ile etkileşim gerekmez
-        ),
-      ],
-    );
-
-    final notificationDetails = NotificationDetails(android: androidDetails);
-    debugPrint('Showing notification: id=$notificationId, payload=$payload');
-    await _flutterLocalNotificationsPlugin.show(
-      notificationId,
-      NotificationStrings.downloadingTitle,
-      body ?? '',
-      notificationDetails,
-      payload: payload, // taskId olduğundan emin olun
-    );
-  }
-
-  Future<void> showSimpleNotification({
-    required int notificationId,
-    required String title,
-    required String body,
-    String? payload,
-  }) async {
-    final androidDetails = AndroidNotificationDetails(
-      'download_channel_id',
-      'İndirme İşlemleri',
-      channelDescription: 'Büyük dosya indirme bildirimleri',
-      importance: Importance.max,
-      priority: Priority.high,
-    );
-
-    final notificationDetails = NotificationDetails(android: androidDetails);
-    await _flutterLocalNotificationsPlugin.show(
-      notificationId,
-      title,
-      body,
-      notificationDetails,
-      payload: payload,
-    );
-  }
-
-  Future<void> cancelNotification(int notificationId) async {
-    await _flutterLocalNotificationsPlugin.cancel(notificationId);
-  }
 }
 
 class FileDownloadHelper extends ChangeNotifier {
@@ -165,33 +55,25 @@ class FileDownloadHelper extends ChangeNotifier {
           if (status == DownloadTaskStatus.running || status == DownloadTaskStatus.enqueued) {
             prefs.setBool(spKeyDownloading, true);
             prefs.setBool(spKeyDownloaded, false);
-            final notificationId = taskId.hashCode;
-            LocalNotificationService.instance.showDownloadProgressNotification(
-              notificationId: notificationId,
-              title: taskInfo.title,
-              progressPercent: progress.toDouble(),
-              body: 'Progress: $progress%',
-              payload: taskId,
-            );
+            // Varsayılan bildirimler flutter_downloader tarafından gösterilecek.
           } else if (status == DownloadTaskStatus.complete) {
-            // ... mevcut kod
+            prefs.setBool(spKeyDownloading, false);
+            prefs.setBool(spKeyDownloaded, true);
+            taskInfo.onDownloadCompleted(taskId);
+            _tasks.remove(taskId);
           } else if (status == DownloadTaskStatus.paused) {
-            // ... mevcut kod
+            prefs.setBool(spKeyDownloading, false);
+            taskInfo.onDownloadPaused();
           } else if (status == DownloadTaskStatus.failed || status == DownloadTaskStatus.canceled) {
             debugPrint('Download failed or canceled for taskId: $taskId, status: $status');
             prefs.setBool(spKeyDownloading, false);
             prefs.setBool(spKeyDownloaded, false);
             if (!taskInfo.isCancelledByUser) {
-              final errorMessage = (status == DownloadTaskStatus.failed) ? 'Download failed' : 'Download canceled';
-              final notificationId = taskId.hashCode;
-              LocalNotificationService.instance.showSimpleNotification(
-                notificationId: notificationId,
-                title: NotificationStrings.downloadErrorTitle,
-                body: '$errorMessage: ${taskInfo.title}',
-                payload: taskId,
-              );
+              // Varsayılan bildirimler flutter_downloader tarafından gösterilecek.
             }
-            taskInfo.onDownloadError(status == DownloadTaskStatus.failed ? 'Download failed' : 'Download canceled');
+            taskInfo.onDownloadError(
+                status == DownloadTaskStatus.failed ? 'Download failed' : 'Download canceled'
+            );
             _tasks.remove(taskId);
           }
         }
@@ -260,8 +142,8 @@ class FileDownloadHelper extends ChangeNotifier {
         url: url,
         savedDir: savedDir,
         fileName: fileName,
-        showNotification: false,
-        openFileFromNotification: false,
+        showNotification: true, // Varsayılan bildirimler aktif
+        openFileFromNotification: true,
       );
 
       if (taskId != null) {
@@ -296,7 +178,6 @@ class FileDownloadHelper extends ChangeNotifier {
         taskInfo.isCancelledByUser = true;
         await FlutterDownloader.cancel(taskId: taskId);
         debugPrint('FlutterDownloader.cancel called for taskId: $taskId');
-        LocalNotificationService.instance.cancelNotification(taskId.hashCode);
         final file = File(taskInfo.filePath);
         if (await file.exists()) {
           await file.delete();

@@ -4,16 +4,17 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'data.dart';
-import 'main.dart';
+import '../../models/data.dart';
+import '../../main.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
 import 'package:provider/provider.dart';
-import 'theme.dart';
+import '../../theme.dart';
 import 'package:cortex/notifications.dart';
 import 'package:shimmer/shimmer.dart'; // Added Shimmer import
 
@@ -325,10 +326,25 @@ class MenuScreenState extends State<MenuScreen> with TickerProviderStateMixin, A
       return;
     }
 
-    // Silinecek sohbetin indeksini bulalım
-    int removeIndex = _conversationIDsOrder.indexOf(conversationID);
+    // Hangi liste ve AnimatedList key kullanılacak?
+    List<String> currentList;
+    GlobalKey<AnimatedListState> currentListKey;
+
+    if (_currentTabIndex == 0) {
+      currentList = _conversationIDsOrder;
+      currentListKey = _allChatsListKey;
+    } else {
+      currentList = _starredConversationIDs;
+      currentListKey = _starredChatsListKey;
+      if (!manager.isStarred) {
+        debugPrint('Warning: Non-starred conversation in Starred Chats tab: $conversationID');
+        return;
+      }
+    }
+
+    int removeIndex = currentList.indexOf(conversationID);
     if (removeIndex < 0) {
-      // Listede bulunamadıysa, yine de prefs temizleyelim.
+      // Listede yoksa, SharedPreferences'tan temizle ve çık
       List<String> conversations = prefs.getStringList('conversations') ?? [];
       conversations.removeWhere((conv) => conv.startsWith('$conversationID|'));
       await prefs.setStringList('conversations', conversations);
@@ -337,23 +353,22 @@ class MenuScreenState extends State<MenuScreen> with TickerProviderStateMixin, A
       return;
     }
 
-    // Silinecek yöneticiyi kaydedelim.
+    bool isLastItem = currentList.length == 1;
     final removedManager = manager;
 
-    // Listedeki öğe sayısına göre farklı davranalım:
-    final bool isLastItem = _conversationIDsOrder.length == 1;
-
     if (!isLastItem) {
-      // 1. Durum: Birden fazla sohbet varsa
-      // Veri modelinden (liste) hemen kaldırıyoruz:
+      // Son öğe değilse, veri modelini hemen güncelle
       setState(() {
-        _conversationIDsOrder.removeAt(removeIndex);
+        _conversationIDsOrder.remove(conversationID);
         _conversationManagers.remove(conversationID);
+        _starredConversationIDs = _conversationIDsOrder
+            .where((id) => _conversationManagers[id]?.isStarred == true)
+            .toList();
       });
     }
 
-    // 2) AnimatedList'te animasyonlu kaldırma işlemini başlatıyoruz.
-    _allChatsListKey.currentState?.removeItem(
+    // Animasyonlu kaldırma
+    currentListKey.currentState?.removeItem(
       removeIndex,
           (context, animation) {
         final curvedAnimation = CurvedAnimation(
@@ -385,27 +400,30 @@ class MenuScreenState extends State<MenuScreen> with TickerProviderStateMixin, A
     );
 
     if (isLastItem) {
-      // 3) Eğer listede sadece tek öğe varsa, animasyonun tamamlanması için bekleyip sonra veri modelini güncelliyoruz.
+      // Son öğeyse, animasyonun tamamlanmasını bekle
       await Future.delayed(const Duration(milliseconds: 300));
       setState(() {
-        _conversationIDsOrder.removeAt(removeIndex);
+        _conversationIDsOrder.remove(conversationID);
         _conversationManagers.remove(conversationID);
+        _starredConversationIDs = _conversationIDsOrder
+            .where((id) => _conversationManagers[id]?.isStarred == true)
+            .toList();
       });
     }
 
-    // 4) SharedPreferences’dan da temizleme işlemlerini yapalım:
+    // SharedPreferences güncellemesi
     List<String> conversations = prefs.getStringList('conversations') ?? [];
     conversations.removeWhere((conv) => conv.startsWith('$conversationID|'));
     await prefs.setStringList('conversations', conversations);
     await prefs.remove('is_starred_$conversationID');
     await prefs.remove(conversationID);
 
-    // 5) Eğer bu sohbet ChatScreen'de aktifse, sıfırlayalım.
+    // Aktif sohbetse sıfırla
     if (mainScreenKey.currentState?.chatScreenKey.currentState?.conversationID == conversationID) {
       mainScreenKey.currentState?.chatScreenKey.currentState?.resetConversation();
     }
 
-    // 6) Sunucu taraflı sohbetlerde Firestore güncellemesi:
+    // Firestore güncellemesi
     if (removedManager.isServerSide) {
       final User? user = FirebaseAuth.instance.currentUser;
       if (user != null) {
@@ -417,19 +435,17 @@ class MenuScreenState extends State<MenuScreen> with TickerProviderStateMixin, A
                 .update({'conversations': FieldValue.increment(-1)});
           } else {
             int convMinus = prefs.getInt('conversationsMinus') ?? 0;
-            convMinus += 1;
-            await prefs.setInt('conversationsMinus', convMinus);
+            await prefs.setInt('conversationsMinus', convMinus + 1);
           }
         } catch (e) {
-          debugPrint("Error decrementing conversations count in Firestore: $e");
+          debugPrint("Error decrementing conversations: $e");
           int convMinus = prefs.getInt('conversationsMinus') ?? 0;
-          convMinus += 1;
-          await prefs.setInt('conversationsMinus', convMinus);
+          await prefs.setInt('conversationsMinus', convMinus + 1);
         }
       }
     }
 
-    // 7) Bildirimi gösterelim.
+    // Bildirim
     _notificationService.showNotification(
       message: AppLocalizations.of(context)!.conversationDeleted,
       isSuccess: true,
@@ -663,7 +679,7 @@ class MenuScreenState extends State<MenuScreen> with TickerProviderStateMixin, A
                     localizations.noStarredChats,
                     style: TextStyle(
                       fontFamily: 'Roboto',
-                      color: AppColors.opposedPrimaryColor,
+                      color: AppColors.primaryColor.inverted,
                       fontSize: MediaQuery.of(context).size.width * 0.08,
                       fontWeight: FontWeight.bold,
                     ),
@@ -685,7 +701,7 @@ class MenuScreenState extends State<MenuScreen> with TickerProviderStateMixin, A
                       ScaffoldMessenger.of(context).hideCurrentSnackBar();
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.opposedPrimaryColor,
+                      backgroundColor: AppColors.primaryColor.inverted,
                       padding: EdgeInsets.symmetric(
                         horizontal: MediaQuery.of(context).size.width * 0.08,
                         vertical: MediaQuery.of(context).size.height * 0.015,
@@ -746,7 +762,7 @@ class MenuScreenState extends State<MenuScreen> with TickerProviderStateMixin, A
                     localizations.noChats,
                     style: TextStyle(
                       fontFamily: 'Roboto',
-                      color: AppColors.opposedPrimaryColor,
+                      color: AppColors.primaryColor.inverted,
                       fontSize: MediaQuery.of(context).size.width * 0.08,
                       fontWeight: FontWeight.bold,
                     ),
@@ -768,7 +784,7 @@ class MenuScreenState extends State<MenuScreen> with TickerProviderStateMixin, A
                       ScaffoldMessenger.of(context).hideCurrentSnackBar();
                     },
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.opposedPrimaryColor,
+                      backgroundColor: AppColors.primaryColor.inverted,
                       padding: EdgeInsets.symmetric(
                         horizontal: MediaQuery.of(context).size.width * 0.08,
                         vertical: MediaQuery.of(context).size.height * 0.015,
@@ -826,7 +842,7 @@ class MenuScreenState extends State<MenuScreen> with TickerProviderStateMixin, A
                 localizations.conversationsTitle,
                 style: TextStyle(
                   fontFamily: 'Roboto',
-                  color: AppColors.opposedPrimaryColor,
+                  color: AppColors.primaryColor.inverted,
                   fontSize: screenWidth * 0.06,
                   fontWeight: FontWeight.bold,
                 ),
@@ -837,7 +853,7 @@ class MenuScreenState extends State<MenuScreen> with TickerProviderStateMixin, A
                 IconButton(
                   icon: SvgPicture.asset(
                     'assets/chat.svg',
-                    color: AppColors.primaryColor,
+                    color: AppColors.primaryColor.inverted,
                     width: screenWidth * 0.055,
                     height: screenWidth * 0.055,
                   ),
@@ -851,8 +867,8 @@ class MenuScreenState extends State<MenuScreen> with TickerProviderStateMixin, A
                 preferredSize: Size.fromHeight(screenWidth * 0.12),
                 child: Theme(
                   data: Theme.of(context).copyWith(
-                    splashColor: Colors.grey.withOpacity(0.3),
-                    highlightColor: Colors.grey.withOpacity(0.1),
+                    splashColor: AppColors.quaternaryColor.withOpacity(0.3),
+                    highlightColor: AppColors.quaternaryColor.withOpacity(0.1),
                   ),
                   child: Container(
                     width: double.infinity,
@@ -863,13 +879,13 @@ class MenuScreenState extends State<MenuScreen> with TickerProviderStateMixin, A
                       indicator: UnderlineTabIndicator(
                         borderSide: BorderSide(
                           width: screenWidth * 0.004,
-                          color: AppColors.opposedPrimaryColor,
+                          color: AppColors.primaryColor.inverted,
                         ),
                         insets: EdgeInsets.zero,
                       ),
                       indicatorSize: TabBarIndicatorSize.tab,
-                      labelColor: AppColors.opposedPrimaryColor,
-                      unselectedLabelColor: Colors.grey,
+                      labelColor: AppColors.primaryColor.inverted,
+                      unselectedLabelColor: AppColors.primaryColor.inverted.withOpacity(0.6),
                       labelStyle: TextStyle(fontSize: screenWidth * 0.04),
                       tabs: [
                         Tab(
@@ -1090,7 +1106,7 @@ class _ConversationTileState extends State<ConversationTile>
         fontSize: fontSize,
         fontWeight: FontWeight.w500,
         height: lineHeight,
-        color: (AppColors.opposedPrimaryColor),
+        color: (AppColors.primaryColor.inverted),
       ),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
@@ -1130,7 +1146,7 @@ class _ConversationTileState extends State<ConversationTile>
       fontSize: screenWidth * 0.045,
       fontWeight: FontWeight.w500,
       height: 1.2,
-      color: AppColors.opposedPrimaryColor,
+      color: AppColors.primaryColor.inverted,
     );
 
     if (_fadeOutController.isAnimating) {
@@ -1150,13 +1166,13 @@ class _ConversationTileState extends State<ConversationTile>
   void _showActionPanel() {
     if (_overlayEntry != null) return;
 
+    // Eğer başka bir karttan panel açıksa, onu animasyonlu kapatıyoruz.
     if (_currentlyOpenTileState != null && _currentlyOpenTileState != this) {
-      _currentlyOpenTileState?._removeOverlay(animate: false);
+      _currentlyOpenTileState?._removeOverlayWithAnimation();
       _currentlyOpenTileState = null;
     }
 
     final loc = AppLocalizations.of(context)!;
-
     final renderBox = _threeDotKey.currentContext!.findRenderObject() as RenderBox;
     final offset = renderBox.localToGlobal(Offset.zero);
     final size = renderBox.size;
@@ -1171,14 +1187,15 @@ class _ConversationTileState extends State<ConversationTile>
     double panelTop = openUpwards ? (offset.dy - panelHeight) : (offset.dy + size.height);
     double panelRight = screenWidth - (offset.dx + size.width);
 
-
     final chatCardBackgroundColor = AppColors.quaternaryColor.withOpacity(0.85);
 
     _overlayEntry = OverlayEntry(
       builder: (overlayContext) {
         return GestureDetector(
           behavior: HitTestBehavior.translucent,
-          onTap: _removeOverlay,
+          // Panele tıklanırsa ya da aşağı kaydırılırsa animasyonlu olarak kapat.
+          onTap: _removeOverlayWithAnimation,
+          onVerticalDragEnd: (_) => _removeOverlayWithAnimation(),
           child: Stack(
             children: [
               Positioned(
@@ -1197,12 +1214,11 @@ class _ConversationTileState extends State<ConversationTile>
                           horizontal: screenWidth * 0.02,
                         ),
                         decoration: BoxDecoration(
-                          // Panelin arka plan rengi artık sohbet kartı ile aynı:
                           color: chatCardBackgroundColor,
                           borderRadius: BorderRadius.circular(screenWidth * 0.02),
                           boxShadow: [
                             BoxShadow(
-                              color: AppColors.shadow,
+                              color: AppColors.quaternaryColor,
                               blurRadius: screenWidth * 0.015,
                               offset: Offset(0, screenHeight * 0.003),
                             ),
@@ -1221,9 +1237,9 @@ class _ConversationTileState extends State<ConversationTile>
                                       : 'assets/starBordered.svg',
                                   iconColor: widget.manager.isStarred
                                       ? Colors.amber
-                                      : AppColors.opposedPrimaryColor,
+                                      : AppColors.primaryColor.inverted,
                                   text: loc.starConversation,
-                                  textColor: AppColors.opposedPrimaryColor,
+                                  textColor: AppColors.primaryColor.inverted,
                                   onPressed: () async {
                                     await _removeOverlayWithAnimation();
                                     widget.onToggleStar();
@@ -1231,10 +1247,10 @@ class _ConversationTileState extends State<ConversationTile>
                                 ),
                                 SizedBox(height: screenHeight * 0.01),
                                 _ActionPanelButton(
-                                  iconAsset: 'assets/editConversationTitle.svg',
-                                  iconColor: AppColors.opposedPrimaryColor,
+                                  iconAsset: 'assets/edit.svg',
+                                  iconColor: AppColors.primaryColor.inverted,
                                   text: loc.editConversationTitle,
-                                  textColor: AppColors.opposedPrimaryColor,
+                                  textColor: AppColors.primaryColor.inverted,
                                   onPressed: () {
                                     _showEditDialog(loc);
                                     _removeOverlay();
@@ -1284,10 +1300,31 @@ class _ConversationTileState extends State<ConversationTile>
     }
   }
 
-// Updated _ConversationTileState._showEditDialog (signature updated)
+  Color darkenWithBlack(Color color, double factor) {
+    assert(factor >= 0 && factor <= 1);
+    final r = (color.red * (1.0 - factor)).round();
+    final g = (color.green * (1.0 - factor)).round();
+    final b = (color.blue * (1.0 - factor)).round();
+    return Color.fromARGB(color.alpha, r, g, b);
+  }
+
   void _showEditDialog(AppLocalizations loc) {
-    if (_isDialogOpen) return; // Prevent multiple dialogs
+    if (_isDialogOpen) return;
     _isDialogOpen = true;
+
+    // Sistem UI güncellemesi: diyalog açılmadan önce navigation bar rengini koyulaştırıyoruz.
+    final themeSettings = AppColors.getSystemUIOverlayStyleForTheme(AppColors.currentTheme);
+    Color navBarColor = themeSettings['navigationBarColor'] as Color;
+    Color darkenedNavBarColor = darkenWithBlack(navBarColor, 0.5);
+    Brightness iconBrightness = ThemeData.estimateBrightnessForColor(darkenedNavBarColor) == Brightness.dark
+        ? Brightness.light
+        : Brightness.dark;
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(
+        systemNavigationBarColor: darkenedNavBarColor,
+        systemNavigationBarIconBrightness: iconBrightness,
+      ),
+    );
 
     final TextEditingController controller = TextEditingController(
       text: widget.manager.conversationTitle,
@@ -1320,7 +1357,7 @@ class _ConversationTileState extends State<ConversationTile>
                         Text(
                           loc.editConversationTitle,
                           style: TextStyle(
-                            color: AppColors.opposedPrimaryColor,
+                            color: AppColors.primaryColor.inverted,
                             fontSize: screenWidth * 0.05,
                             fontWeight: FontWeight.bold,
                           ),
@@ -1332,32 +1369,30 @@ class _ConversationTileState extends State<ConversationTile>
                           decoration: InputDecoration(
                             labelText: loc.newTitle,
                             labelStyle: TextStyle(
-                              color: AppColors.opposedPrimaryColor,
+                              color: AppColors.primaryColor.inverted,
                             ),
                             enabledBorder: OutlineInputBorder(
                               borderSide: BorderSide(
-                                color: AppColors.textFieldBorder,
+                                color: AppColors.border,
                               ),
-                              borderRadius:
-                              BorderRadius.circular(screenWidth * 0.02),
+                              borderRadius: BorderRadius.circular(screenWidth * 0.02),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderSide: BorderSide(
-                                color: AppColors.opposedPrimaryColor,
+                                color: AppColors.primaryColor.inverted,
                               ),
-                              borderRadius:
-                              BorderRadius.circular(screenWidth * 0.02),
+                              borderRadius: BorderRadius.circular(screenWidth * 0.02),
                             ),
                           ),
                           style: TextStyle(
-                            color: AppColors.opposedPrimaryColor,
+                            color: AppColors.primaryColor.inverted,
                           ),
                         ),
                       ],
                     ),
                   ),
                   Divider(
-                    color: AppColors.dialogDivider,
+                    color: AppColors.quinaryColor,
                     thickness: 0.5,
                     height: 1,
                   ),
@@ -1365,43 +1400,55 @@ class _ConversationTileState extends State<ConversationTile>
                     child: Row(
                       children: [
                         Expanded(
-                          child: TextButton(
-                            onPressed: () => Navigator.of(ctx).pop(),
-                            style: TextButton.styleFrom(
-                              foregroundColor: Colors.red,
-                              padding: EdgeInsets.symmetric(
-                                  vertical: screenWidth * 0.04),
-                            ),
-                            child: Text(
-                              loc.cancel,
-                              style:
-                              TextStyle(fontSize: screenWidth * 0.035),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              splashColor: AppColors.septenaryColor.withOpacity(0.1),
+                              highlightColor: AppColors.septenaryColor.withOpacity(0.1),
+                              onTap: () => Navigator.of(ctx).pop(),
+                              child: Container(
+                                alignment: Alignment.center,
+                                padding: EdgeInsets.symmetric(vertical: screenWidth * 0.04),
+                                child: Text(
+                                  loc.cancel,
+                                  style: TextStyle(
+                                    fontSize: screenWidth * 0.035,
+                                    color: AppColors.septenaryColor,
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         ),
                         VerticalDivider(
-                          color: AppColors.dialogDivider,
+                          color: AppColors.quinaryColor,
                           thickness: 0.5,
                           width: 1,
                         ),
                         Expanded(
-                          child: TextButton(
-                            onPressed: () {
-                              String newText = controller.text.trim();
-                              if (newText.isNotEmpty) {
-                                widget.onEdit(newText);
-                              }
-                              Navigator.of(ctx).pop();
-                            },
-                            style: TextButton.styleFrom(
-                              foregroundColor: Colors.blue,
-                              padding: EdgeInsets.symmetric(
-                                  vertical: screenWidth * 0.04),
-                            ),
-                            child: Text(
-                              loc.save,
-                              style:
-                              TextStyle(fontSize: screenWidth * 0.035),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              splashColor: AppColors.senaryColor.withOpacity(0.1),
+                              highlightColor: AppColors.senaryColor.withOpacity(0.1),
+                              onTap: () {
+                                String newText = controller.text.trim();
+                                if (newText.isNotEmpty) {
+                                  widget.onEdit(newText);
+                                }
+                                Navigator.of(ctx).pop();
+                              },
+                              child: Container(
+                                alignment: Alignment.center,
+                                padding: EdgeInsets.symmetric(vertical: screenWidth * 0.04),
+                                child: Text(
+                                  loc.save,
+                                  style: TextStyle(
+                                    fontSize: screenWidth * 0.035,
+                                    color: AppColors.senaryColor,
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         ),
@@ -1418,6 +1465,13 @@ class _ConversationTileState extends State<ConversationTile>
         return FadeTransition(opacity: animation, child: child);
       },
     ).then((_) {
+      // Diyalog kapandıktan sonra sistem UI ayarlarını orijinal haline getiriyoruz.
+      SystemChrome.setSystemUIOverlayStyle(
+        SystemUiOverlayStyle(
+          systemNavigationBarColor: themeSettings['navigationBarColor'] as Color,
+          systemNavigationBarIconBrightness: themeSettings['navigationBarIconBrightness'] as Brightness,
+        ),
+      );
       _isDialogOpen = false;
     });
   }
@@ -1502,6 +1556,8 @@ class _ConversationTileState extends State<ConversationTile>
     final Color backgroundColor = AppColors.quaternaryColor;
     return GestureDetector(
       onTapDown: (_) {
+        // Eğer opsiyon paneli açık ise hiçbir işlem yapmayız
+        if (_overlayEntry != null) return;
         _isLongPress = false;
         _longPressTimer = Timer(const Duration(milliseconds: 100), () {
           setState(() {
@@ -1511,15 +1567,23 @@ class _ConversationTileState extends State<ConversationTile>
         });
       },
       onTapUp: (_) {
+        if (_overlayEntry != null) return;
         _longPressTimer?.cancel();
       },
       onTapCancel: () {
+        if (_overlayEntry != null) return;
         _longPressTimer?.cancel();
       },
       onTap: () {
+        if (_overlayEntry != null) return;
         if (!_isLongPress) {
           _navigateToChatScreen();
         }
+      },
+      onHorizontalDragUpdate: (details) {
+        // Eğer opsiyon paneli açık ise horizontal drag'ı devre dışı bırak
+        if (_overlayEntry != null) return;
+        // İstenirse burada normal drag işlemi yapılabilir.
       },
       child: Container(
         margin: EdgeInsets.symmetric(
@@ -1532,7 +1596,7 @@ class _ConversationTileState extends State<ConversationTile>
           borderRadius: BorderRadius.circular(screenWidth * 0.03),
           boxShadow: [
             BoxShadow(
-              color: AppColors.shadow,
+              color: AppColors.quaternaryColor.withOpacity(0.3),
               blurRadius: screenWidth * 0.015,
               offset: Offset(0, screenHeight * 0.003),
             ),
@@ -1601,17 +1665,12 @@ class _ConversationTileState extends State<ConversationTile>
                               widget.manager.modelTitle +
                                   (widget.manager.modelId.contains('-')
                                       ? " " +
-                                      formatExtension(
-                                        widget.manager.modelId
-                                            .split('-')
-                                            .sublist(1)
-                                            .join('-'),
-                                      )
+                                      formatExtension(widget.manager.modelId.split('-').sublist(1).join('-'))
                                       : ""),
                               style: GoogleFonts.poppins(
                                 fontSize: screenWidth * 0.03,
                                 fontWeight: FontWeight.w400,
-                                color: AppColors.opposedPrimaryColor,
+                                color: AppColors.primaryColor.inverted,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -1636,7 +1695,7 @@ class _ConversationTileState extends State<ConversationTile>
                                 child: Icon(
                                   Icons.more_horiz,
                                   size: screenWidth * 0.05,
-                                  color: Colors.grey,
+                                  color: AppColors.tertiaryColor,
                                 ),
                               ),
                             ),
