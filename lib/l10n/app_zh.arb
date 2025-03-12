@@ -230,7 +230,7 @@
   "@downloaded": {
     "description": "表示已完成下载的百分比。",
     "placeholders": {
-      "percent": {}
+      "percent": {"type": "Object"}
     }
   },
   "downloadPaused": "下载已暂停。",
@@ -295,7 +295,7 @@
   "@creditPackage": {
     "description": "购买特定数量积分的按钮文本",
     "placeholders": {
-      "amount": {}
+      "amount": {"type": "Object"}
     }
   },
   "subscribedPlan": "已订阅",
