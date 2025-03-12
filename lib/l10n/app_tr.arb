@@ -293,7 +293,8 @@
   "@downloaded": {
     "description": "İndirmenin tamamlanma yüzdesini belirtir.",
     "placeholders": {
-      "percent": {}
+        
+      "percent": {"type": "Object"}
     }
   },
   "downloadPaused": "İndirme duraklatıldı.",
@@ -361,7 +362,9 @@
   "@creditPackage": {
     "description": "Belirli sayıda kredi satın almak için buton metni",
     "placeholders": {
-      "amount": {}
+      "amount": {
+        "type": "Object"
+      }
     }
   },
   "subscribedPlan": "Aboneliğiniz Var",

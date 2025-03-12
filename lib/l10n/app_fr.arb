@@ -260,7 +260,9 @@
   "@downloaded": {
     "description": "Indique le pourcentage du téléchargement complété.",
     "placeholders": {
-      "percent": {}
+      "percent": {
+        "type": "Object"
+      }
     }
   },
   "downloadPaused": "Téléchargement en pause.",
@@ -326,7 +328,7 @@
   "@creditPackage": {
     "description": "Texte du bouton pour acheter un nombre spécifique de crédits",
     "placeholders": {
-      "amount": {}
+      "amount": {"type": "Object"}
     }
   },
   "subscribedPlan": "Abonné",
